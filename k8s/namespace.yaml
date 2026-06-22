@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fastapi-ns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: intern-app
+
