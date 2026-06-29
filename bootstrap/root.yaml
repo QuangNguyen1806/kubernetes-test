@@ -1,27 +1,31 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: api2
+  name: root
   namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "3"
+  labels:
+    app.kubernetes.io/managed-by: argocd-autopilot
+    app.kubernetes.io/name: root
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
     repoURL: https://github.com/QuangNguyen1806/kubernetes-test.git
     targetRevision: main
-    path: apps/api2/overlays/minikube
+    path: projects
   destination:
     server: https://kubernetes.default.svc
-    namespace: api2-ns
+    namespace: argocd
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+      allowEmpty: true
     syncOptions:
-      - CreateNamespace=true
+      - allowEmpty=true
   ignoreDifferences:
-    - group: apps
-      kind: Deployment
+    - group: argoproj.io
+      kind: Application
       jsonPointers:
-        - /spec/replicas
+        - /status

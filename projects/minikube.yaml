@@ -1,0 +1,75 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: minikube
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+    argocd.argoproj.io/sync-options: PruneLast=true
+    argocd-autopilot.argoproj-labs.io/default-dest-server: https://kubernetes.default.svc
+spec:
+  description: minikube project
+  sourceRepos:
+    - "*"
+  destinations:
+    - namespace: "*"
+      server: "*"
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: minikube
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/QuangNguyen1806/kubernetes-test.git
+        revision: main
+        files:
+          - path: apps/**/minikube/config.json
+        requeueAfterSeconds: 20
+  template:
+    metadata:
+      name: minikube-{{userGivenName}}
+      namespace: argocd
+      labels:
+        app.kubernetes.io/managed-by: argocd-autopilot
+        app.kubernetes.io/name: "{{appName}}"
+      annotations:
+        argocd.argoproj.io/sync-wave: "3"
+    spec:
+      project: minikube
+      source:
+        repoURL: "{{srcRepoURL}}"
+        targetRevision: "{{srcTargetRevision}}"
+        path: "{{srcPath}}"
+      destination:
+        server: "{{destServer}}"
+        namespace: "{{destNamespace}}"
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+          allowEmpty: true
+        syncOptions:
+          - allowEmpty=true
+          - CreateNamespace=true
+      ignoreDifferences:
+        - group: apps
+          kind: Deployment
+          jsonPointers:
+            - /spec/replicas
+        - group: argoproj.io
+          kind: Application
+          jsonPointers:
+            - /status
+  syncPolicy:
+    preserveResourcesOnDeletion: false

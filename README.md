@@ -1,22 +1,26 @@
-# FastAPI on Minikube (multi-app, Kustomize + GitOps)
+# FastAPI on Minikube (Argo CD Autopilot layout)
 
-Kubernetes manifests use **Kustomize** (`base` + `overlays/minikube`). **ArgoCD** uses an **App of Apps** bootstrap to sync everything from Git.
+Kubernetes manifests use **Kustomize** (`base` + `overlays/minikube`). **Argo CD** follows the [Argo CD Autopilot](https://github.com/argoproj-labs/argocd-autopilot) repository pattern: `bootstrap/` → `projects/` → `apps/` with **ApplicationSet** + `config.json`.
 
 ## Repository layout
 
 ```
-├── app/, app2/                         # application source
+├── app/, app2/                              # application source
 ├── apps/
-│   ├── fastapi/base + overlays/minikube
-│   └── api2/base + overlays/minikube
-├── infrastructure/
-│   ├── namespaces/base
-│   ├── rbac/base
-│   └── redis/base + overlays/minikube
-├── argocd/
-│   ├── bootstrap.yaml                  # App of Apps (apply once)
-│   └── applications/                   # child Application CRs
-└── .github/workflows/build.yml         # CI: build + push to GHCR
+│   ├── fastapi/base + overlays/minikube/
+│   │   └── config.json                      # ApplicationSet discovers this
+│   └── api2/base + overlays/minikube/
+│       └── config.json
+├── bootstrap/
+│   ├── argo-cd/                             # Argo CD self-managed from Git
+│   ├── cluster-resources/                   # infra via ApplicationSet
+│   ├── argo-cd.yaml, root.yaml, cluster-resources.yaml
+├── projects/
+│   └── minikube.yaml                        # AppProject + ApplicationSet
+├── infrastructure/                          # namespaces, rbac, redis
+├── install/
+│   └── autopilot-bootstrap.yaml             # apply once after Argo CD install
+└── .github/workflows/build.yml
 ```
 
 ## Prerequisites
@@ -27,12 +31,10 @@ Kubernetes manifests use **Kustomize** (`base` + `overlays/minikube`). **ArgoCD*
 
 ## Apps
 
-| App | Code | Kustomize path | Image | Namespace | Port |
-|-----|------|----------------|-------|-----------|------|
-| fastapi | `app/` | `apps/fastapi/overlays/minikube` | `fastapi:latest` | `fastapi-ns` | 8000 |
-| api2 | `app2/` | `apps/api2/overlays/minikube` | `api2:latest` | `api2-ns` | 8001 |
-
-Redis runs once in `fastapi-ns` (`infrastructure/redis`); api2 shares it cross-namespace.
+| App | Code | Kustomize path | Argo CD Application | Namespace | Port |
+|-----|------|----------------|---------------------|-----------|------|
+| fastapi | `app/` | `apps/fastapi/overlays/minikube` | `minikube-fastapi` | `fastapi-ns` | 8000 |
+| api2 | `app2/` | `apps/api2/overlays/minikube` | `minikube-api2` | `api2-ns` | 8001 |
 
 Repo: `https://github.com/QuangNguyen1806/kubernetes-test.git`
 
@@ -53,14 +55,10 @@ docker build -f Dockerfile.api2 -t api2:latest .
 
 ---
 
-## 2. Deploy with Kustomize (without ArgoCD)
-
-Apply in order (namespaces → rbac → redis → apps):
+## 2. Deploy with Kustomize (without Argo CD)
 
 ```bash
-kubectl apply -k infrastructure/namespaces/base
-kubectl apply -k infrastructure/rbac/base
-kubectl apply -k infrastructure/redis/overlays/minikube
+kubectl apply -k bootstrap/cluster-resources/in-cluster
 kubectl apply -k apps/fastapi/overlays/minikube
 kubectl apply -k apps/api2/overlays/minikube
 
@@ -68,84 +66,77 @@ kubectl rollout status deployment/fastapi -n fastapi-ns --timeout=120s
 kubectl rollout status deployment/api2 -n api2-ns --timeout=120s
 ```
 
-Preview rendered manifests:
-
-```bash
-kubectl kustomize apps/fastapi/overlays/minikube
-```
-
 ---
 
-## 3. Install ArgoCD and bootstrap GitOps (once)
+## 3. Install Argo CD and bootstrap Autopilot (once)
+
+**Step A** — install Argo CD (first time only):
 
 ```bash
 kubectl create namespace argocd
 
-kubectl apply -n argocd --server-side -f \
-  https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.2/manifests/install.yaml
+kubectl apply -k bootstrap/argo-cd
 
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server \
   -n argocd --timeout=300s
-
-# App of Apps — registers all child Applications from Git
-kubectl apply -f argocd/bootstrap.yaml
-
-kubectl get application -n argocd
 ```
 
-| ArgoCD App | Git path | Sync wave |
-|------------|----------|-----------|
-| `bootstrap` | `argocd/applications/` | — |
-| `infra-namespaces` | `infrastructure/namespaces/base` | 0 |
-| `infra-rbac` | `infrastructure/rbac/base` | 1 |
-| `infra-redis` | `infrastructure/redis/overlays/minikube` | 2 |
-| `fastapi` | `apps/fastapi/overlays/minikube` | 3 |
-| `api2` | `apps/api2/overlays/minikube` | 3 |
+**Step B** — apply the Autopilot bootstrap Application:
 
-> Use `--server-side` on ArgoCD install to avoid CRD annotation errors.
+```bash
+kubectl apply -f install/autopilot-bootstrap.yaml
+```
+
+This creates three child resources from `bootstrap/`:
+
+| Application | Role |
+|-------------|------|
+| `argo-cd` | Argo CD manages itself from `bootstrap/argo-cd/` |
+| `root` | Syncs `projects/` (AppProjects + ApplicationSets) |
+| `cluster-resources` (ApplicationSet) | Deploys `bootstrap/cluster-resources/in-cluster/` (infra) |
+
+Then `root` deploys `projects/minikube.yaml`, which creates:
+
+| Resource | Role |
+|----------|------|
+| `minikube` AppProject | Project scope for local cluster |
+| `minikube` ApplicationSet | Discovers `apps/**/minikube/config.json` |
+| `minikube-fastapi`, `minikube-api2` | Auto-created Applications |
+
+```bash
+kubectl get application,applicationset,appproject -n argocd
+```
+
+> Argo CD is pinned to **v2.13.2** in `bootstrap/argo-cd/` (ARM-friendly). Use `kubectl apply -k` not plain `kubectl apply` for the install.
 
 ---
 
-## 4. Log in to ArgoCD
-
-**Terminal A** (keep open):
+## 4. Log in to Argo CD
 
 ```bash
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 ```
 
-Open **https://localhost:8080** — user `admin`, password:
+Password:
 
 ```bash
 kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath="{.data.password}" | base64 -d && echo
 ```
 
-CLI:
-
 ```bash
 argocd login localhost:8080 --username admin --password <PASSWORD> --insecure --grpc-web
 argocd app list --grpc-web
-argocd app get fastapi --grpc-web
 ```
 
 ---
 
 ## 5. Access both apps
 
-**Terminal B:**
-
 ```bash
 kubectl port-forward -n fastapi-ns svc/fastapi 8000:8000
-```
-
-**Terminal C:**
-
-```bash
 kubectl port-forward -n api2-ns svc/api2 8001:8000
-```
 
-```bash
 curl http://127.0.0.1:8000/
 curl http://127.0.0.1:8001/
 ```
@@ -154,65 +145,49 @@ curl http://127.0.0.1:8001/
 
 ## 6. GitOps demo — change ConfigMap via Git
 
-ConfigMaps use `configMapGenerator` in each app's `base/kustomization.yaml`. When `MESSAGE` changes, Kustomize gives the ConfigMap a new hash suffix and updates the Deployment reference — **pods roll out automatically** (no manual `rollout restart`).
-
-**fastapi** — edit `apps/fastapi/base/kustomization.yaml`:
-
-```yaml
-configMapGenerator:
-  - name: app-config
-    literals:
-      - MESSAGE=Hello from GitOps!
-```
+Edit `MESSAGE` in `apps/fastapi/base/kustomization.yaml` (`configMapGenerator` literals). Push to Git — Argo CD syncs and pods roll out automatically.
 
 ```bash
 git add apps/fastapi/base/kustomization.yaml
 git commit -m "GitOps: update fastapi MESSAGE"
 git push origin main
 
-# ArgoCD auto-syncs; or:
-argocd app sync fastapi --grpc-web
+argocd app sync minikube-fastapi --grpc-web
 kubectl rollout status deployment/fastapi -n fastapi-ns
-curl http://127.0.0.1:8000/
 ```
-
-**api2** — same pattern in `apps/api2/base/kustomization.yaml`.
 
 ---
 
-## 7. GitOps demo — self-heal
+## 7. Add a third app (Autopilot pattern)
 
 ```bash
-kubectl edit configmap -n fastapi-ns -l app.kubernetes.io/name=app-config
-# ArgoCD selfHeal reverts drift after sync
-argocd app sync fastapi --grpc-web
+cp -r apps/api2 apps/api3
+cp -r app2 app3
+# Rename api2 → api3 in apps/api3/ and app3/
+
+# Create overlay config for ApplicationSet discovery:
+cat > apps/api3/overlays/minikube/config.json <<'EOF'
+{
+  "appName": "api3",
+  "userGivenName": "api3",
+  "destNamespace": "api3-ns",
+  "destServer": "https://kubernetes.default.svc",
+  "srcPath": "apps/api3/overlays/minikube",
+  "srcRepoURL": "https://github.com/QuangNguyen1806/kubernetes-test.git",
+  "srcTargetRevision": "main"
+}
+EOF
+
+# Add api3-ns to infrastructure/namespaces/base/namespaces.yaml
+git push origin main
+# ApplicationSet creates minikube-api3 automatically
 ```
+
+To add another environment (e.g. staging), create `projects/staging.yaml` and `apps/*/overlays/staging/config.json`.
 
 ---
 
-## 8. Other tests
-
-```bash
-curl -X POST http://127.0.0.1:8000/items \
-  -H "Content-Type: application/json" \
-  -d '{"name":"book","value":"redis-guide"}'
-curl http://127.0.0.1:8000/items
-
-curl -X POST http://127.0.0.1:8001/items \
-  -H "Content-Type: application/json" \
-  -d '{"name":"tool","value":"api2-test"}'
-curl http://127.0.0.1:8001/items
-
-kubectl get hpa -n fastapi-ns
-kubectl get hpa -n api2-ns
-
-kubectl auth can-i get configmaps --as=system:serviceaccount:fastapi-ns:fastapi-sa -n intern-app
-kubectl auth can-i get configmaps --as=system:serviceaccount:api2-ns:api2-sa -n intern-app
-```
-
----
-
-## 9. Rebuild after code changes
+## 8. Rebuild after code changes
 
 ```bash
 eval "$(minikube -p newprofile docker-env)"
@@ -222,26 +197,29 @@ kubectl rollout restart deployment/fastapi -n fastapi-ns
 kubectl rollout restart deployment/api2 -n api2-ns
 ```
 
-For registry-based deploys, CI pushes to `ghcr.io/<owner>/kubernetes-test/<app>:<sha>`. Update `images:` in the overlay and set `imagePullPolicy: IfNotPresent`.
+CI pushes images to `ghcr.io/<owner>/kubernetes-test/<app>:<sha>` on push to `main`.
 
 ---
 
-## 10. Add a third app
+## 9. Teardown
 
 ```bash
-cp -r apps/api2 apps/api3
-cp -r app2 app3
-# Rename api2 → api3 in apps/api3/ and app3/
-# Add argocd/applications/api3.yaml (copy api2.yaml, change path + name)
-# Register in bootstrap by placing the new Application YAML in argocd/applications/
+minikube delete -p newprofile
 ```
 
 ---
 
-## 11. Teardown
+## Autopilot flow (diagram)
 
-```bash
-minikube delete -p newprofile
+```
+autopilot-bootstrap
+  ├── argo-cd          (self-managed Argo CD)
+  ├── root
+  │     └── projects/minikube.yaml
+  │           ├── AppProject: minikube
+  │           └── ApplicationSet → minikube-fastapi, minikube-api2
+  └── cluster-resources (ApplicationSet)
+        └── cluster-resources-in-cluster → infrastructure/
 ```
 
 ---
@@ -251,11 +229,9 @@ minikube delete -p newprofile
 | Problem | Fix |
 |---------|-----|
 | `DOCKER_NOT_RUNNING` | Start Docker Desktop |
-| `memory` error on start | Use `--memory=3072` not 4096 |
-| ArgoCD CRD `annotations: Too long` | Install with `--server-side` |
-| `argocd-repo-server` CrashLoop on ARM | Use ArgoCD **v2.13.2** |
-| `ImagePullBackOff` | `eval "$(minikube -p newprofile docker-env)"` + rebuild images |
-| ConfigMap change not in app | Ensure you edited `kustomization.yaml` literals; wait for rollout |
-| `argocd login` / sync fails | Port-forward 8080 open; use `--grpc-web` |
-| HPA shows OutOfSync | Expected — `ignoreDifferences` on replicas in Application |
-| App sync before Redis | Check sync waves; `infra-redis` is wave 2, apps are wave 3 |
+| Argo CD CRD errors on ARM | Use v2.13.2 in `bootstrap/argo-cd/` |
+| `argocd-repo-server` CrashLoop | Same — stay on v2.13.2 |
+| No `minikube-fastapi` app | Check `config.json` exists under `apps/*/overlays/minikube/` |
+| App before Redis ready | `cluster-resources` sync wave 1, apps wave 3 |
+| HPA OutOfSync | Expected — `ignoreDifferences` on replicas |
+| Migrating from old `argocd/` layout | Delete old Applications; apply `install/autopilot-bootstrap.yaml` |

@@ -1,0 +1,9 @@
+{
+  "appName": "fastapi",
+  "userGivenName": "fastapi",
+  "destNamespace": "fastapi-ns",
+  "destServer": "https://kubernetes.default.svc",
+  "srcPath": "apps/fastapi/overlays/minikube",
+  "srcRepoURL": "https://github.com/QuangNguyen1806/kubernetes-test.git",
+  "srcTargetRevision": "main"
+}

@@ -1,27 +1,33 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: fastapi
+  name: autopilot-bootstrap
   namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "3"
+  labels:
+    app.kubernetes.io/managed-by: argocd-autopilot
+    app.kubernetes.io/name: autopilot-bootstrap
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
     repoURL: https://github.com/QuangNguyen1806/kubernetes-test.git
     targetRevision: main
-    path: apps/fastapi/overlays/minikube
+    path: bootstrap
+    directory:
+      recurse: false
   destination:
     server: https://kubernetes.default.svc
-    namespace: fastapi-ns
+    namespace: argocd
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+      allowEmpty: true
     syncOptions:
-      - CreateNamespace=true
+      - allowEmpty=true
   ignoreDifferences:
-    - group: apps
-      kind: Deployment
+    - group: argoproj.io
+      kind: Application
       jsonPointers:
-        - /spec/replicas
+        - /status

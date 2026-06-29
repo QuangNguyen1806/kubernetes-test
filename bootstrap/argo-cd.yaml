@@ -1,22 +1,29 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: infra-rbac
+  name: argo-cd
   namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    app.kubernetes.io/managed-by: argocd-autopilot
+    app.kubernetes.io/name: argo-cd
 spec:
   project: default
   source:
     repoURL: https://github.com/QuangNguyen1806/kubernetes-test.git
     targetRevision: main
-    path: infrastructure/rbac/base
+    path: bootstrap/argo-cd
   destination:
     server: https://kubernetes.default.svc
-    namespace: intern-app
+    namespace: argocd
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+      allowEmpty: true
     syncOptions:
-      - CreateNamespace=true
+      - allowEmpty=true
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Application
+      jsonPointers:
+        - /status

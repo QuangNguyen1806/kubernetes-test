@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cluster-resources
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/QuangNguyen1806/kubernetes-test.git
+        revision: main
+        files:
+          - path: bootstrap/cluster-resources/*.json
+        requeueAfterSeconds: 20
+  template:
+    metadata:
+      name: cluster-resources-{{name}}
+      namespace: argocd
+      labels:
+        app.kubernetes.io/managed-by: argocd-autopilot
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/QuangNguyen1806/kubernetes-test.git
+        targetRevision: main
+        path: bootstrap/cluster-resources/{{name}}
+      destination:
+        server: "{{server}}"
+        namespace: argocd
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: false
+          allowEmpty: true
+        syncOptions:
+          - allowEmpty=true
+          - CreateNamespace=true
+  syncPolicy:
+    preserveResourcesOnDeletion: true
