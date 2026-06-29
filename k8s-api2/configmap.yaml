@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config
-  namespace: api2-ns
-data:
-  MESSAGE: "Hello from api2 ConfigMap"

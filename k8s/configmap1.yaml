@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config
-  namespace: fastapi-ns-1
-data:
-  MESSAGE: "Goodbye from ConfigMap"

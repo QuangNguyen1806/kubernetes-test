@@ -1,25 +1,22 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: api2
+  name: infra-redis
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   project: default
   source:
     repoURL: https://github.com/QuangNguyen1806/kubernetes-test.git
     targetRevision: main
-    path: k8s-api2
+    path: infrastructure/redis/overlays/minikube
   destination:
     server: https://kubernetes.default.svc
-    namespace: api2-ns
+    namespace: fastapi-ns
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-  ignoreDifferences:
-    - group: apps
-      kind: Deployment
-      jsonPointers:
-        - /spec/replicas

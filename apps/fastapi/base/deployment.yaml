@@ -1,23 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: api2
-  namespace: api2-ns
+  name: fastapi
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: api2
+      app: fastapi
   template:
     metadata:
       labels:
-        app: api2
+        app: fastapi
     spec:
-      serviceAccountName: api2-sa
+      serviceAccountName: fastapi-sa
       containers:
-        - name: api2
-          image: api2:latest
-          imagePullPolicy: Never
+        - name: fastapi
+          image: fastapi:latest
           ports:
             - containerPort: 8000
           resources:
@@ -34,7 +32,7 @@ spec:
                 name: app-secret
           env:
             - name: REDIS_HOST
-              value: redis-0.redis.fastapi-ns.svc.cluster.local
+              value: redis-0.redis
             - name: REDIS_PORT
               value: "6379"
             - name: REDIS_PASSWORD
@@ -42,18 +40,3 @@ spec:
                 secretKeyRef:
                   name: redis-secret
                   key: REDIS_PASSWORD
-            - name: REDIS_KEY
-              value: "api2:items"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: api2
-  namespace: api2-ns
-spec:
-  type: NodePort
-  selector:
-    app: api2
-  ports:
-    - port: 8000
-      nodePort: 30081

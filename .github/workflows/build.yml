@@ -1,0 +1,49 @@
+name: Build and push images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "app2/**"
+      - "Dockerfile"
+      - "Dockerfile.api2"
+      - "requirements.txt"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: fastapi
+            dockerfile: Dockerfile
+            context: .
+            kustomize_image: fastapi
+          - name: api2
+            dockerfile: Dockerfile.api2
+            context: .
+            kustomize_image: api2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.name }}:latest
+            ghcr.io/${{ github.repository }}/${{ matrix.name }}:${{ github.sha }}

@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: api2
+    newName: api2
+    newTag: latest
+patches:
+  - path: deployment-patch.yaml
