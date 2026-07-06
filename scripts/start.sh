@@ -15,10 +15,9 @@ echo "==> 2/6  Minikube ($PROFILE)"
 minikube start -p "$PROFILE" --driver=docker --memory=3072 --cpus=2
 minikube -p "$PROFILE" addons enable metrics-server >/dev/null 2>&1 || true
 
-echo "==> 3/6  Build images"
+echo "==> 3/6  Build image (one Dockerfile, multiple tags)"
 eval "$(minikube -p "$PROFILE" docker-env)"
-docker build -t fastapi:latest .
-docker build -f Dockerfile.api2 -t api2:latest .
+docker build -t demo-api:latest -t fastapi:latest -t api2:latest .
 
 echo "==> 4/6  Install Argo CD"
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
@@ -65,11 +64,11 @@ echo "  kubectl port-forward svc/argocd-server -n argocd 8080:443"
 echo "  https://localhost:8080"
 echo ""
 echo "Open apps (Terminal B & C):"
-echo "  kubectl port-forward -n fastapi-ns svc/fastapi 8000:8000"
-echo "  kubectl port-forward -n api2-ns svc/api2 8001:8000"
+echo "  kubectl port-forward -n fastapi-ns svc/api 8000:8000"
+echo "  kubectl port-forward -n api2-ns svc/api 8001:8000"
 echo ""
 echo "Deploy manifest changes (no kubectl apply):"
-echo "  edit apps/*/base/kustomization.yaml  →  git push origin main"
+echo "  edit apps/*/overlays/minikube/kustomization.yaml  →  git push origin main"
 echo "  Argo CD auto-syncs within ~15–60 seconds."
 echo ""
 kubectl get application -n argocd 2>/dev/null || true
