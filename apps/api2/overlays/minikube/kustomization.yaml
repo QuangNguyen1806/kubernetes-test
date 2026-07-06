@@ -1,28 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: api2-ns
 resources:
-  - ../../../shared/base
-  - rbac.yaml
-configMapGenerator:
-  - name: app-config
-    literals:
-      - APP_NAME=api2
-      - REDIS_KEY=api2:items
-      - MESSAGE=Hello from api2 ConfigMap
-secretGenerator:
-  - name: app-secret
-    literals:
-      - API_KEY=sk-api2-secret-key
-  - name: redis-secret
-    literals:
-      - REDIS_PASSWORD=redis-super-secret-password
-    options:
-      disableNameSuffixHash: true
+  - ../../base
 images:
-  - name: demo-api
-    newName: demo-api
+  - name: api2
+    newName: api2
     newTag: latest
 patches:
   - path: deployment-patch.yaml
-  - path: service-patch.yaml

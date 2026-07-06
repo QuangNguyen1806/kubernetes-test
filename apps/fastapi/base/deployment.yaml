@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: api
+  name: fastapi
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: api
+      app: fastapi
   template:
     metadata:
       labels:
-        app: api
+        app: fastapi
     spec:
-      serviceAccountName: api-sa
+      serviceAccountName: fastapi-sa
       containers:
-        - name: api
-          image: demo-api:latest
+        - name: fastapi
+          image: fastapi:latest
           ports:
             - containerPort: 8000
           resources:
@@ -32,7 +32,7 @@ spec:
                 name: app-secret
           env:
             - name: REDIS_HOST
-              value: redis-0.redis.fastapi-ns.svc.cluster.local
+              value: redis-0.redis
             - name: REDIS_PORT
               value: "6379"
             - name: REDIS_PASSWORD

@@ -1,13 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: api
+  name: fastapi
 spec:
   template:
     spec:
       containers:
-        - name: api
+        - name: fastapi
           imagePullPolicy: Never
-          env:
-            - name: REDIS_HOST
-              value: redis-0.redis

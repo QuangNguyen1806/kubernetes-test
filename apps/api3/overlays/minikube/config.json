@@ -1,9 +1,0 @@
-{
-  "appName": "api3",
-  "userGivenName": "api3",
-  "destNamespace": "api3-ns",
-  "destServer": "https://kubernetes.default.svc",
-  "srcPath": "apps/api3/overlays/minikube",
-  "srcRepoURL": "https://github.com/QuangNguyen1806/kubernetes-test.git",
-  "srcTargetRevision": "main"
-}
