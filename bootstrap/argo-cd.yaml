@@ -8,10 +8,17 @@ metadata:
     app.kubernetes.io/name: argo-cd
 spec:
   project: default
-  source:
-    repoURL: https://github.com/QuangNguyen1806/kubernetes-test.git
-    targetRevision: main
-    path: bootstrap/argo-cd
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: 7.8.2
+      helm:
+        releaseName: argocd
+        valueFiles:
+          - $values/bootstrap/argo-cd/values.yaml
+    - repoURL: https://github.com/QuangNguyen1806/kubernetes-test.git
+      targetRevision: main
+      ref: values
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

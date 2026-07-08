@@ -20,7 +20,7 @@ eval "$(minikube -p "$PROFILE" docker-env)"
 docker build -t fastapi:latest .
 docker build -f Dockerfile.api2 -t api2:latest .
 
-echo "==> 4/6  Install Argo CD"
+echo "==> 4/6  Seed Argo CD (first install only)"
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 if ! kubectl get deployment argocd-server -n argocd >/dev/null 2>&1; then
   kubectl apply -k bootstrap/argo-cd
@@ -69,7 +69,7 @@ echo "  kubectl port-forward -n fastapi-ns svc/fastapi 8000:8000"
 echo "  kubectl port-forward -n api2-ns svc/api2 8001:8000"
 echo ""
 echo "Deploy manifest changes (no kubectl apply):"
-echo "  edit apps/*/base/kustomization.yaml  →  git push origin main"
+echo "  edit apps/*/overlays/minikube/kustomization.yaml  →  git push origin main"
 echo "  Argo CD auto-syncs within ~15–60 seconds."
 echo ""
 kubectl get application -n argocd 2>/dev/null || true

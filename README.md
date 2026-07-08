@@ -73,9 +73,10 @@ This script:
 
 1. Starts Minikube (`newprofile`)
 2. Builds `fastapi:latest` and `api2:latest` images
-3. Installs Argo CD from `bootstrap/argo-cd/`
-4. Applies `install/autopilot-bootstrap.yaml` (Autopilot App-of-Apps)
-5. Waits for Argo CD to pull GitHub and deploy everything
+3. Seeds Argo CD from `bootstrap/argo-cd/` (first install only)
+4. Argo CD self-manages via Helm chart in `bootstrap/argo-cd.yaml`
+5. Applies `install/autopilot-bootstrap.yaml` (Autopilot App-of-Apps)
+6. Waits for Argo CD to pull GitHub and deploy everything
 
 **You only need kubectl inside this script.** After it finishes, Argo CD owns all manifest deploys.
 
@@ -202,7 +203,7 @@ Re-run `./scripts/start.sh` to start fresh.
 | No `minikube-fastapi` app | Ensure `apps/fastapi/overlays/minikube/config.json` is on GitHub `main` |
 | Git pushed but app unchanged | `argocd app get minikube-fastapi --grpc-web` — check Revision vs `git log -1` |
 | `argo-cd` shows OutOfSync | Harmless ConfigMap drift — Argo CD itself is healthy |
-| Argo CD CrashLoop on ARM | Pinned to v2.13.2 in `bootstrap/argo-cd/` |
+| Argo CD version management | Set chart version in `bootstrap/argo-cd.yaml` (`spec.sources[].targetRevision`) |
 
 ---
 
