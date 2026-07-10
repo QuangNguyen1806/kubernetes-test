@@ -12,8 +12,16 @@ echo "==> 1/6  Docker"
 docker info >/dev/null 2>&1 || die "Start Docker Desktop first."
 
 echo "==> 2/6  Minikube ($PROFILE)"
-minikube start -p "$PROFILE" --driver=docker --memory=3072 --cpus=2
-minikube -p "$PROFILE" addons enable metrics-server >/dev/null 2>&1 || true
+minikube start -p "$PROFILE" --driver=docker --memory="${MINIKUBE_MEMORY:-4096}" --cpus="${MINIKUBE_CPUS:-2}"
+for _ in $(seq 1 60); do
+  kubectl --context "$PROFILE" get --raw=/readyz >/dev/null 2>&1 && break
+  sleep 2
+done
+kubectl --context "$PROFILE" get --raw=/readyz >/dev/null 2>&1 \
+  || { echo "ERROR: apiserver not ready" >&2; exit 1; }
+kubectl config use-context "$PROFILE" >/dev/null
+minikube -p "$PROFILE" addons enable metrics-server \
+  || { echo "ERROR: failed to enable metrics-server" >&2; exit 1; }
 
 echo "==> 3/6  Build image (one Dockerfile → demo-api:latest)"
 eval "$(minikube -p "$PROFILE" docker-env)"

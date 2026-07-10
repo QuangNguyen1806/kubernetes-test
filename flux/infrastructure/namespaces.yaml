@@ -26,9 +26,10 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: flux
 ---
+# Flux-only RBAC demo namespace (do not share Argo's intern-app)
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: intern-app
+  name: flux-intern-app
   labels:
     app.kubernetes.io/managed-by: flux

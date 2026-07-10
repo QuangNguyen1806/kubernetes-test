@@ -19,7 +19,7 @@ kubectl port-forward -n flux-api2-ns svc/api2 8101:8000
 kubectl port-forward -n flux-api3-ns svc/api3 8102:8000
 ```
 
-Flux owns its own Redis (`flux-redis-ns`), RBAC, and app namespaces.
+Flux owns its own Redis (`flux-redis-ns`), RBAC (`flux-intern-app`), and app namespaces.
 
 ### Argo + Flux (side-by-side)
 
@@ -150,7 +150,7 @@ apps/
 bootstrap/      Argo CD Autopilot + Helm self-management
 flux/
   clusters/minikube/     Flux controllers + app/infra Kustomizations
-  infrastructure/        Flux-only namespaces, RBAC, Redis (flux-redis-ns)
+  infrastructure/        Flux-only namespaces, RBAC (flux-intern-app), Redis (flux-redis-ns)
 projects/       Argo AppProject + ApplicationSet
 infrastructure/ Argo-owned namespaces, rbac, redis
 scripts/        start.sh (Argo) + start-flux.sh (Flux)
