@@ -1,13 +1,11 @@
-name: Build and push images
+name: Build and push image
 
 on:
   push:
     branches: [main]
     paths:
       - "app/**"
-      - "app2/**"
       - "Dockerfile"
-      - "Dockerfile.api2"
       - "requirements.txt"
 
 permissions:
@@ -17,17 +15,6 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - name: fastapi
-            dockerfile: Dockerfile
-            context: .
-            kustomize_image: fastapi
-          - name: api2
-            dockerfile: Dockerfile.api2
-            context: .
-            kustomize_image: api2
     steps:
       - uses: actions/checkout@v4
 
@@ -38,12 +25,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push ${{ matrix.name }}
+      - name: Build and push demo-api
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
+          context: .
+          file: Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/${{ matrix.name }}:latest
-            ghcr.io/${{ github.repository }}/${{ matrix.name }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/demo-api:latest
+            ghcr.io/${{ github.repository }}/demo-api:${{ github.sha }}
