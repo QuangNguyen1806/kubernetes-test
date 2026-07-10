@@ -24,8 +24,11 @@ spec:
       allowEmpty: true
     syncOptions:
       - allowEmpty=true
+      - ServerSideApply=true
   ignoreDifferences:
     - group: argoproj.io
       kind: Application
       jsonPointers:
         - /status
+      jqPathExpressions:
+        - .status

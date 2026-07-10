@@ -6,9 +6,15 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: argocd-autopilot
     app.kubernetes.io/name: argo-cd
+  annotations:
+    # Sync Argo CD itself before apps/infra
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   project: default
   sources:
+    # Source of truth for Argo CD version: bump targetRevision, git push.
+    # Chart versions: https://github.com/argoproj/argo-helm/releases
+    # Example: 7.8.2 → Argo CD v2.14.2
     - repoURL: https://argoproj.github.io/argo-helm
       chart: argo-cd
       targetRevision: 7.8.2
@@ -16,6 +22,7 @@ spec:
         releaseName: argocd
         valueFiles:
           - $values/bootstrap/argo-cd/values.yaml
+    # Git values — any push to values.yaml is picked up automatically
     - repoURL: https://github.com/QuangNguyen1806/kubernetes-test.git
       targetRevision: main
       ref: values
@@ -29,8 +36,21 @@ spec:
       allowEmpty: true
     syncOptions:
       - allowEmpty=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+      - PruneLast=true
   ignoreDifferences:
     - group: argoproj.io
       kind: Application
       jsonPointers:
         - /status
+    # Only ignore install-time admin password; do not blanket-ignore all Secrets
+    # (that would block Helm upgrades).
+    - kind: Secret
+      name: argocd-initial-admin-secret
+      jsonPointers:
+        - /data
+        - /stringData
+      jqPathExpressions:
+        - .data
+        - .stringData

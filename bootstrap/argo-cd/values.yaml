@@ -1,3 +1,18 @@
+# Self-managed Argo CD Helm values.
+# Live upgrades: edit targetRevision in ../argo-cd.yaml → git push origin main.
+# Config changes here also apply on push (no kubectl).
+
 configs:
   cm:
+    # Poll Git every 15s so pushes show up quickly without a webhook
     timeout.reconciliation: 15s
+    # Refresh app status / cached manifests on the same cadence
+    timeout.hard.reconciliation: 0s
+  params:
+    # Keep Application controller responsive for demos
+    controller.status.processors: "20"
+    controller.operation.processors: "10"
+
+crds:
+  install: true
+  keep: true

@@ -10,6 +10,7 @@ app = FastAPI()
 
 MESSAGE = os.getenv("MESSAGE", "default")
 API_KEY = os.getenv("API_KEY", "")
+APP_NAME = os.getenv("APP_NAME", "api2")
 
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
@@ -32,7 +33,7 @@ class Item(BaseModel):
 @app.get("/")
 def root():
     return {
-        "app": "api2",
+        "app": APP_NAME,
         "configmap": {"MESSAGE": MESSAGE},
         "secret": {"API_KEY": f"{API_KEY[:4]}****" if API_KEY else None},
     }

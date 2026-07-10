@@ -32,7 +32,7 @@ spec:
                 name: app-secret
           env:
             - name: REDIS_HOST
-              value: redis-0.redis
+              value: redis-0.redis.fastapi-ns.svc.cluster.local
             - name: REDIS_PORT
               value: "6379"
             - name: REDIS_PASSWORD

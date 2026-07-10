@@ -18,9 +18,9 @@ minikube -p "$PROFILE" addons enable metrics-server >/dev/null 2>&1 || true
 echo "==> 3/6  Build images"
 eval "$(minikube -p "$PROFILE" docker-env)"
 docker build -t fastapi:latest .
-docker build -f Dockerfile.api2 -t api2:latest .
+docker build -f Dockerfile.api2 -t api2:latest -t api3:latest .
 
-echo "==> 4/6  Seed Argo CD (first install only)"
+echo "==> 4/6  Seed Argo CD (first install only; pinned to match Helm chart)"
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 if ! kubectl get deployment argocd-server -n argocd >/dev/null 2>&1; then
   kubectl apply -k bootstrap/argo-cd
@@ -64,12 +64,16 @@ echo "Open UI (Terminal A):"
 echo "  kubectl port-forward svc/argocd-server -n argocd 8080:443"
 echo "  https://localhost:8080"
 echo ""
-echo "Open apps (Terminal B & C):"
+echo "Open apps:"
 echo "  kubectl port-forward -n fastapi-ns svc/fastapi 8000:8000"
 echo "  kubectl port-forward -n api2-ns svc/api2 8001:8000"
+echo "  kubectl port-forward -n api3-ns svc/api3 8002:8000"
+echo ""
+echo "Upgrade Argo CD (Git only):"
+echo "  edit bootstrap/argo-cd.yaml → sources[0].targetRevision  →  git push"
 echo ""
 echo "Deploy manifest changes (no kubectl apply):"
-echo "  edit apps/*/overlays/minikube/kustomization.yaml  →  git push origin main"
+echo "  edit apps/*/overlays/minikube/  or  infrastructure/  →  git push origin main"
 echo "  Argo CD auto-syncs within ~15–60 seconds."
 echo ""
 kubectl get application -n argocd 2>/dev/null || true

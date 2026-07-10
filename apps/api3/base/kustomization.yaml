@@ -9,6 +9,7 @@ resources:
 configMapGenerator:
   - name: app-config
     literals:
+      - APP_NAME=api3
       - MESSAGE=Hello from api3 ConfigMap
 secretGenerator:
   - name: app-secret

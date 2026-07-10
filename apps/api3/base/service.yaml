@@ -8,4 +8,4 @@ spec:
     app: api3
   ports:
     - port: 8000
-      nodePort: 30081
+      nodePort: 30082

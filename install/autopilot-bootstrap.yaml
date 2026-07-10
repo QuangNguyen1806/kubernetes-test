@@ -16,6 +16,7 @@ spec:
     path: bootstrap
     directory:
       recurse: false
+      include: "*.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -26,8 +27,11 @@ spec:
       allowEmpty: true
     syncOptions:
       - allowEmpty=true
+      - ServerSideApply=true
   ignoreDifferences:
     - group: argoproj.io
       kind: Application
       jsonPointers:
         - /status
+      jqPathExpressions:
+        - .status

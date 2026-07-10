@@ -20,11 +20,18 @@ kubectl port-forward -n fastapi-ns svc/fastapi 8000:8000
 kubectl port-forward -n api2-ns svc/api2 8001:8000
 ```
 
-**Deploy config changes** (no kubectl):
+**Deploy config changes** (no kubectl — any `git push` to `main` auto-syncs in ~15s):
 
 ```bash
-# edit apps/fastapi/base/kustomization.yaml or apps/api2/base/kustomization.yaml
+# edit apps/*/… or infrastructure/… or bootstrap/argo-cd.yaml
 git add -A && git commit -m "update" && git push origin main
+```
+
+**Upgrade Argo CD itself** (self-managed — Git only):
+
+```bash
+# edit bootstrap/argo-cd.yaml → spec.sources[0].targetRevision  (Helm chart version)
+git add bootstrap/argo-cd.yaml && git commit -m "Upgrade Argo CD chart" && git push origin main
 ```
 
 **Rebuild after Python code changes:**
@@ -32,21 +39,24 @@ git add -A && git commit -m "update" && git push origin main
 ```bash
 eval "$(minikube -p newprofile docker-env)"
 docker build -t fastapi:latest .
-docker build -f Dockerfile.api2 -t api2:latest .
+docker build -f Dockerfile.api2 -t api2:latest -t api3:latest .
 kubectl rollout restart deployment/fastapi -n fastapi-ns
 kubectl rollout restart deployment/api2 -n api2-ns
+kubectl rollout restart deployment/api3 -n api3-ns
 ```
 
 **Teardown:** `minikube delete -p newprofile`
 
 ---
 
-Two apps (fastapi + api2) on Minikube. Manifests live in Git; **Argo CD watches GitHub and auto-syncs** — after the one-time setup below you never run `kubectl apply` for deployments.
+Apps on Minikube. Manifests live in Git; **Argo CD watches GitHub and auto-syncs** — after the one-time setup below you never run `kubectl apply` for deployments. Argo CD also **manages itself** via the Helm chart declared in `bootstrap/argo-cd.yaml`.
 
 | App | Argo CD Application | URL (after port-forward) |
 |-----|---------------------|--------------------------|
 | fastapi | `minikube-fastapi` | http://127.0.0.1:8000 |
 | api2 | `minikube-api2` | http://127.0.0.1:8001 |
+| api3 | `minikube-api3` | http://127.0.0.1:8002 |
+| Argo CD | `argo-cd` | https://localhost:8080 |
 
 Repo: https://github.com/QuangNguyen1806/kubernetes-test.git
 
@@ -153,10 +163,29 @@ Same for api2 — edit `apps/api2/base/kustomization.yaml`, push, watch `minikub
 
 | What | How |
 |------|-----|
-| Manifest deploys | `syncPolicy.automated` on every Application |
+| Manifest deploys | `syncPolicy.automated` + `selfHeal` on every Application |
+| Fast Git detection | `timeout.reconciliation=15s` in Helm values (no webhook required) |
 | Drift correction | `selfHeal: true` reverts manual cluster edits |
 | New app | Add `apps/foo/overlays/minikube/config.json` + push → ApplicationSet creates `minikube-foo` |
 | Infra (Redis, namespaces) | `cluster-resources-in-cluster` syncs from Git |
+| **Argo CD version upgrade** | Change `bootstrap/argo-cd.yaml` → `sources[0].targetRevision` → push → `argo-cd` app upgrades itself |
+
+### Upgrade Argo CD (self-managed)
+
+1. Pick a chart version from https://github.com/argoproj/argo-helm/releases (e.g. `argo-cd-7.8.2`)
+2. Set it in `bootstrap/argo-cd.yaml`:
+
+```yaml
+sources:
+  - repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-cd
+    targetRevision: 7.8.2   # ← change this
+```
+
+3. `git push origin main`
+4. Watch app `argo-cd` go OutOfSync → Synced / Healthy
+
+`bootstrap/argo-cd/kustomization.yaml` is **seed only** (first `./scripts/start.sh`). Live version is always the Helm `targetRevision`.
 
 ### What is NOT automatic (Minikube limitation)
 
@@ -203,15 +232,19 @@ Re-run `./scripts/start.sh` to start fresh.
 | No `minikube-fastapi` app | Ensure `apps/fastapi/overlays/minikube/config.json` is on GitHub `main` |
 | Git pushed but app unchanged | `argocd app get minikube-fastapi --grpc-web` — check Revision vs `git log -1` |
 | `argo-cd` shows OutOfSync | Harmless ConfigMap drift — Argo CD itself is healthy |
-| Argo CD version management | Set chart version in `bootstrap/argo-cd.yaml` (`spec.sources[].targetRevision`) |
+| Argo CD version management | Edit `bootstrap/argo-cd.yaml` → `spec.sources[0].targetRevision` (Helm chart version), then `git push` |
+| Argo CD CrashLoop / ComparisonError to :8081 | Seed must stay on v2.14.x — do not point `bootstrap/argo-cd/kustomization.yaml` at `stable` (currently v3.x) |
+| `argo-cd` shows OutOfSync after Helm cutover | Wait for sync with `ServerSideApply`; refresh app if needed |
 
 ---
 
 ## Repository layout (reference)
 
 ```
-apps/           fastapi + api2 (Kustomize base/overlays + config.json)
-bootstrap/      Argo CD install + Autopilot wiring
+apps/           fastapi + api2 + api3 (Kustomize base/overlays + config.json)
+bootstrap/      Autopilot apps + Argo CD Helm Application (self-managed)
+  argo-cd.yaml  ← live Argo CD version (Helm chart targetRevision)
+  argo-cd/      ← first-install seed only (not used after bootstrap)
 projects/       minikube AppProject + ApplicationSet
 infrastructure/ namespaces, rbac, redis
 install/        autopilot-bootstrap.yaml (applied once by start.sh)
@@ -221,7 +254,8 @@ scripts/        start.sh
 Autopilot flow:
 
 ```
-autopilot-bootstrap → argo-cd, root, cluster-resources
-  root → projects/minikube → ApplicationSet → minikube-fastapi, minikube-api2
+autopilot-bootstrap → argo-cd (Helm self-managed), root, cluster-resources
+  argo-cd → official argo-cd Helm chart + bootstrap/argo-cd/values.yaml
+  root → projects/minikube → ApplicationSet → minikube-fastapi, minikube-api2, minikube-api3
   cluster-resources → cluster-resources-in-cluster → infrastructure/
 ```
