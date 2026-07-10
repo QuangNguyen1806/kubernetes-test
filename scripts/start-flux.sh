@@ -22,9 +22,16 @@ echo "==> 3/5  Build image (demo-api:latest)"
 eval "$(minikube -p "$PROFILE" docker-env)"
 docker build -t demo-api:latest .
 
-echo "==> 4/5  Install Flux controllers + sync from Git"
-kubectl apply -k flux/clusters/minikube/flux-system
+echo "==> 4/5  Install Flux controllers, then Git sync"
+# Apply controllers/CRDs first — applying gotk-sync in the same shot fails
+# because the API server has not registered the new CRDs yet.
+kubectl apply -f flux/clusters/minikube/flux-system/gotk-components.yaml
+kubectl wait --for=condition=Established \
+  crd/kustomizations.kustomize.toolkit.fluxcd.io \
+  crd/gitrepositories.source.toolkit.fluxcd.io \
+  --timeout=120s
 kubectl -n flux-system wait --for=condition=available deploy --all --timeout=300s
+kubectl apply -f flux/clusters/minikube/flux-system/gotk-sync.yaml
 
 echo "==> 5/5  Wait for Flux apps"
 for i in $(seq 1 48); do
