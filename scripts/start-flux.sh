@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Install Flux beside Argo CD on the same Minikube profile.
-# Argo owns: fastapi-ns, api2-ns, api3-ns
-# Flux owns: flux-fastapi-ns, flux-api2-ns, flux-api3-ns
+# Flux-only bootstrap. Deploys Flux + mirrored apps with Flux-owned Redis/RBAC.
+# No Argo CD required.
 set -euo pipefail
 
 PROFILE="${MINIKUBE_PROFILE:-newprofile}"
@@ -10,31 +9,28 @@ cd "$ROOT"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
-echo "==> 1/5  Prerequisites (run ./scripts/start.sh first so Argo infra/redis exist)"
+echo "==> 1/5  Prerequisites"
 docker info >/dev/null 2>&1 || die "Start Docker Desktop first."
 command -v flux >/dev/null 2>&1 || die "Install Flux CLI: brew install fluxcd/tap/flux"
 command -v kubectl >/dev/null 2>&1 || die "kubectl is required."
-kubectl get ns argocd >/dev/null 2>&1 || die "Argo CD not found — run ./scripts/start.sh first."
 
 echo "==> 2/5  Minikube ($PROFILE)"
 minikube start -p "$PROFILE" --driver=docker --memory=3072 --cpus=2
 minikube -p "$PROFILE" addons enable metrics-server >/dev/null 2>&1 || true
 
-echo "==> 3/5  Ensure demo-api image exists"
+echo "==> 3/5  Build image (demo-api:latest)"
 eval "$(minikube -p "$PROFILE" docker-env)"
-if ! docker image inspect demo-api:latest >/dev/null 2>&1; then
-  docker build -t demo-api:latest .
-fi
+docker build -t demo-api:latest .
 
-echo "==> 4/5  Install / reconcile Flux controllers"
+echo "==> 4/5  Install Flux controllers + sync from Git"
 kubectl apply -k flux/clusters/minikube/flux-system
 kubectl -n flux-system wait --for=condition=available deploy --all --timeout=300s
 
-echo "==> 5/5  Wait for Flux app mirrors"
-for i in $(seq 1 40); do
+echo "==> 5/5  Wait for Flux apps"
+for i in $(seq 1 48); do
   READY=0
   for ns in flux-fastapi-ns flux-api2-ns flux-api3-ns; do
-    if kubectl get deploy -n "$ns" >/dev/null 2>&1; then
+    if kubectl get deploy -n "$ns" --no-headers 2>/dev/null | grep -q .; then
       READY=$((READY + 1))
     fi
   done
@@ -46,29 +42,22 @@ done
 
 echo ""
 echo "=============================================="
-echo "  Flux CD ready (side-by-side with Argo CD)"
+echo "  Flux CD ready (Flux-only path)"
 echo "=============================================="
 echo ""
-echo "Flux status:"
+echo "Status:"
 echo "  flux get all -A"
 echo ""
-echo "Flux apps (mirrors of Argo apps):"
+echo "Apps:"
 echo "  kubectl port-forward -n flux-fastapi-ns svc/fastapi 8100:8000"
 echo "  kubectl port-forward -n flux-api2-ns svc/api2 8101:8000"
 echo "  kubectl port-forward -n flux-api3-ns svc/api3 8102:8000"
 echo ""
-echo "Argo apps (unchanged):"
-echo "  kubectl port-forward -n fastapi-ns svc/fastapi 8000:8000"
-echo "  kubectl port-forward -n api2-ns svc/api2 8001:8000"
-echo "  kubectl port-forward -n api3-ns svc/api3 8002:8000"
-echo ""
-echo "GitOps:"
-echo "  Argo path:  apps/*/overlays/minikube  →  fastapi-ns / api2-ns / api3-ns"
-echo "  Flux path:  apps/*/overlays/flux      →  flux-*-ns"
-echo "  Push to main → both reconcile (~15s)"
+echo "GitOps (no kubectl apply):"
+echo "  edit apps/*/overlays/flux  or  flux/infrastructure  →  git push origin main"
 echo ""
 echo "Upgrade Flux controllers:"
 echo "  flux install --export > flux/clusters/minikube/flux-system/gotk-components.yaml"
 echo "  git push origin main"
 echo ""
-flux get kustomizations -A 2>/dev/null || kubectl get kustomizations -n flux-system 2>/dev/null || true
+flux get kustomizations -A 2>/dev/null || kubectl get kustomizations -A 2>/dev/null || true

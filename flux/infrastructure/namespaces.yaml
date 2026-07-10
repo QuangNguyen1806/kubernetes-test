@@ -19,44 +19,16 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: flux
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: flux-fastapi-sa-binding
-  namespace: intern-app
-subjects:
-  - kind: ServiceAccount
-    name: fastapi-sa
-    namespace: flux-fastapi-ns
-roleRef:
-  kind: Role
-  name: config-secret-reader
-  apiGroup: rbac.authorization.k8s.io
+  name: flux-redis-ns
+  labels:
+    app.kubernetes.io/managed-by: flux
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: flux-api2-sa-binding
-  namespace: intern-app
-subjects:
-  - kind: ServiceAccount
-    name: api2-sa
-    namespace: flux-api2-ns
-roleRef:
-  kind: Role
-  name: config-secret-reader
-  apiGroup: rbac.authorization.k8s.io
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: flux-api3-sa-binding
-  namespace: intern-app
-subjects:
-  - kind: ServiceAccount
-    name: api3-sa
-    namespace: flux-api3-ns
-roleRef:
-  kind: Role
-  name: config-secret-reader
-  apiGroup: rbac.authorization.k8s.io
+  name: intern-app
+  labels:
+    app.kubernetes.io/managed-by: flux

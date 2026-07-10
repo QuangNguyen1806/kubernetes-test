@@ -8,3 +8,6 @@ spec:
       containers:
         - name: api
           imagePullPolicy: Never
+          env:
+            - name: REDIS_HOST
+              value: redis-0.redis.flux-redis-ns.svc.cluster.local

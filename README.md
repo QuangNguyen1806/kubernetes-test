@@ -5,6 +5,24 @@ One **codebase** (`app/`), one **Dockerfile**, one image (`demo-api:latest`).
 
 ## Quick start
 
+### Flux-only (no Argo)
+
+```bash
+cd "/Users/mac/Kubernetes Test"
+./scripts/start-flux.sh
+```
+
+```bash
+flux get all -A
+kubectl port-forward -n flux-fastapi-ns svc/fastapi 8100:8000
+kubectl port-forward -n flux-api2-ns svc/api2 8101:8000
+kubectl port-forward -n flux-api3-ns svc/api3 8102:8000
+```
+
+Flux owns its own Redis (`flux-redis-ns`), RBAC, and app namespaces.
+
+### Argo + Flux (side-by-side)
+
 ```bash
 cd "/Users/mac/Kubernetes Test"
 ./scripts/start.sh       # Argo CD + apps in fastapi-ns / api2-ns / api3-ns
@@ -25,9 +43,6 @@ kubectl port-forward -n api3-ns svc/api3 8002:8000
 kubectl port-forward -n flux-fastapi-ns svc/fastapi 8100:8000
 kubectl port-forward -n flux-api2-ns svc/api2 8101:8000
 kubectl port-forward -n flux-api3-ns svc/api3 8102:8000
-
-# Flux status
-flux get all -A
 ```
 
 **Deploy config changes** (no kubectl — `git push` to `main` auto-syncs in ~15s):
@@ -85,7 +100,9 @@ Repo: https://github.com/QuangNguyen1806/kubernetes-test.git
 ## Prerequisites
 
 - Docker Desktop (running)
-- `minikube`, `kubectl`, `docker`, `argocd` CLI
+- `minikube`, `kubectl`, `docker`
+- Flux-only: `flux` CLI (`brew install fluxcd/tap/flux`)
+- Argo path: also `argocd` CLI (optional)
 
 ---
 
@@ -133,7 +150,7 @@ apps/
 bootstrap/      Argo CD Autopilot + Helm self-management
 flux/
   clusters/minikube/     Flux controllers + app/infra Kustomizations
-  infrastructure/        Flux namespaces + RBAC
+  infrastructure/        Flux-only namespaces, RBAC, Redis (flux-redis-ns)
 projects/       Argo AppProject + ApplicationSet
 infrastructure/ Argo-owned namespaces, rbac, redis
 scripts/        start.sh (Argo) + start-flux.sh (Flux)
