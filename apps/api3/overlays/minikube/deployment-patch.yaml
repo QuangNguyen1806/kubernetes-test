@@ -6,5 +6,5 @@ spec:
   template:
     spec:
       containers:
-        - name: api3
+        - name: api
           imagePullPolicy: Never

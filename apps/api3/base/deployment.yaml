@@ -14,8 +14,8 @@ spec:
     spec:
       serviceAccountName: api3-sa
       containers:
-        - name: api3
-          image: api3:latest
+        - name: api
+          image: demo-api:latest
           ports:
             - containerPort: 8000
           resources:
@@ -40,5 +40,3 @@ spec:
                 secretKeyRef:
                   name: redis-secret
                   key: REDIS_PASSWORD
-            - name: REDIS_KEY
-              value: api3:items

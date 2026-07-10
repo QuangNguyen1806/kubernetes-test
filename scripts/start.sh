@@ -15,10 +15,9 @@ echo "==> 2/6  Minikube ($PROFILE)"
 minikube start -p "$PROFILE" --driver=docker --memory=3072 --cpus=2
 minikube -p "$PROFILE" addons enable metrics-server >/dev/null 2>&1 || true
 
-echo "==> 3/6  Build images"
+echo "==> 3/6  Build image (one Dockerfile → demo-api:latest)"
 eval "$(minikube -p "$PROFILE" docker-env)"
-docker build -t fastapi:latest .
-docker build -f Dockerfile.api2 -t api2:latest -t api3:latest .
+docker build -t demo-api:latest .
 
 echo "==> 4/6  Seed Argo CD (first install only; pinned to match Helm chart)"
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -

@@ -3,8 +3,8 @@ kind: Kustomization
 resources:
   - ../../base
 images:
-  - name: api2
-    newName: api2
+  - name: demo-api
+    newName: demo-api
     newTag: latest
 patches:
   - path: deployment-patch.yaml

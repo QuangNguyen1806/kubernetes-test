@@ -10,6 +10,7 @@ configMapGenerator:
   - name: app-config
     literals:
       - APP_NAME=api2
+      - REDIS_KEY=api2:items
       - MESSAGE=Hello from api2 ConfigMap
 secretGenerator:
   - name: app-secret

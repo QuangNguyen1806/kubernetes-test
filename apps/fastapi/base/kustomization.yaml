@@ -9,6 +9,8 @@ resources:
 configMapGenerator:
   - name: app-config
     literals:
+      - APP_NAME=fastapi
+      - REDIS_KEY=items
       - MESSAGE=Goodbye from ConfigMap
 secretGenerator:
   - name: app-secret

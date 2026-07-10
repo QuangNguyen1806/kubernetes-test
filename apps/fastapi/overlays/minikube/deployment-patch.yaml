@@ -6,5 +6,5 @@ spec:
   template:
     spec:
       containers:
-        - name: fastapi
+        - name: api
           imagePullPolicy: Never
