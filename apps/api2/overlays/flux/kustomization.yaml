@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: flux-api2-ns
+resources:
+  - ../../base
+images:
+  - name: demo-api
+    newName: demo-api
+    newTag: latest
+configMapGenerator:
+  - name: app-config
+    behavior: merge
+    literals:
+      - APP_NAME=flux-api2
+      - REDIS_KEY=flux:api2:items
+      - MESSAGE=Hello from Flux api2
+patches:
+  - path: deployment-patch.yaml
+  - path: service-patch.yaml
+  - patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: api2-sa-binding
+        namespace: intern-app

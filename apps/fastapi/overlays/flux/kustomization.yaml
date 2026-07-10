@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: flux-fastapi-ns
+resources:
+  - ../../base
+images:
+  - name: demo-api
+    newName: demo-api
+    newTag: latest
+configMapGenerator:
+  - name: app-config
+    behavior: merge
+    literals:
+      - APP_NAME=flux-fastapi
+      - REDIS_KEY=flux:fastapi:items
+      - MESSAGE=Hello from Flux fastapi
+secretGenerator:
+  - name: redis-secret
+    literals:
+      - REDIS_PASSWORD=redis-super-secret-password
+    options:
+      disableNameSuffixHash: true
+patches:
+  - path: deployment-patch.yaml
+  - path: service-patch.yaml
+  - patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: fastapi-sa-binding
+        namespace: intern-app

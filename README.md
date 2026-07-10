@@ -1,30 +1,40 @@
-# FastAPI on Minikube — GitOps with Argo CD Autopilot
+# FastAPI on Minikube — GitOps with Argo CD + Flux CD
 
 One **codebase** (`app/`), one **Dockerfile**, one image (`demo-api:latest`).  
-Instances (fastapi / api2 / api3) differ only by Kustomize config (`APP_NAME`, `REDIS_KEY`, `MESSAGE`).
+**Argo CD** and **Flux CD** both run side-by-side on the same cluster, each deploying mirrored app instances into **separate namespaces** (no resource fighting).
 
 ## Quick start
 
 ```bash
 cd "/Users/mac/Kubernetes Test"
-./scripts/start.sh
+./scripts/start.sh       # Argo CD + apps in fastapi-ns / api2-ns / api3-ns
+./scripts/start-flux.sh  # Flux CD + mirrored apps in flux-*-ns
 ```
 
 ```bash
 # Argo CD UI
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 # https://localhost:8080  user: admin
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d && echo
 
-# Apps
+# Argo apps
 kubectl port-forward -n fastapi-ns svc/fastapi 8000:8000
 kubectl port-forward -n api2-ns svc/api2 8001:8000
 kubectl port-forward -n api3-ns svc/api3 8002:8000
+
+# Flux apps (mirrors)
+kubectl port-forward -n flux-fastapi-ns svc/fastapi 8100:8000
+kubectl port-forward -n flux-api2-ns svc/api2 8101:8000
+kubectl port-forward -n flux-api3-ns svc/api3 8102:8000
+
+# Flux status
+flux get all -A
 ```
 
 **Deploy config changes** (no kubectl — `git push` to `main` auto-syncs in ~15s):
 
 ```bash
+# Argo-owned:  apps/*/overlays/minikube
+# Flux-owned:  apps/*/overlays/flux
 git add -A && git commit -m "update" && git push origin main
 ```
 
@@ -32,7 +42,15 @@ git add -A && git commit -m "update" && git push origin main
 
 ```bash
 # edit bootstrap/argo-cd.yaml → spec.sources[0].targetRevision
-git add bootstrap/argo-cd.yaml && git commit -m "Upgrade Argo CD chart" && git push origin main
+git push origin main
+```
+
+**Upgrade Flux controllers** (self-managed):
+
+```bash
+flux install --export > flux/clusters/minikube/flux-system/gotk-components.yaml
+git add flux/clusters/minikube/flux-system/gotk-components.yaml
+git commit -m "Upgrade Flux" && git push origin main
 ```
 
 **Rebuild after Python code changes** (one image, all instances):
@@ -43,16 +61,22 @@ docker build -t demo-api:latest .
 kubectl rollout restart deployment/fastapi -n fastapi-ns
 kubectl rollout restart deployment/api2 -n api2-ns
 kubectl rollout restart deployment/api3 -n api3-ns
+kubectl rollout restart deployment/fastapi -n flux-fastapi-ns
+kubectl rollout restart deployment/api2 -n flux-api2-ns
+kubectl rollout restart deployment/api3 -n flux-api3-ns
 ```
 
 **Teardown:** `minikube delete -p newprofile`
 
-| Instance | Argo CD App | Namespace | Port-forward |
-|----------|-------------|-----------|--------------|
-| fastapi | `minikube-fastapi` | `fastapi-ns` | 8000 |
-| api2 | `minikube-api2` | `api2-ns` | 8001 |
-| api3 | `minikube-api3` | `api3-ns` | 8002 |
-| Argo CD | `argo-cd` | `argocd` | 8080 |
+| Interface | Instance | Namespace | Port-forward |
+|-----------|----------|-----------|--------------|
+| Argo | fastapi | `fastapi-ns` | 8000 |
+| Argo | api2 | `api2-ns` | 8001 |
+| Argo | api3 | `api3-ns` | 8002 |
+| Flux | fastapi | `flux-fastapi-ns` | 8100 |
+| Flux | api2 | `flux-api2-ns` | 8101 |
+| Flux | api3 | `flux-api3-ns` | 8102 |
+| Argo UI | — | `argocd` | 8080 |
 
 Repo: https://github.com/QuangNguyen1806/kubernetes-test.git
 
@@ -101,21 +125,22 @@ Repo: https://github.com/QuangNguyen1806/kubernetes-test.git
 ## Repository layout
 
 ```
-app/            single Python codebase (APP_NAME / REDIS_KEY / MESSAGE from env)
-Dockerfile      single build → demo-api:latest
+app/            single Python codebase
+Dockerfile      → demo-api:latest
 apps/
-  fastapi/      overlay + config.json
-  api2/
-  api3/
-bootstrap/      Autopilot + Argo CD Helm Application (self-managed)
-projects/       AppProject + ApplicationSet
-infrastructure/ namespaces, rbac, redis
-install/        autopilot-bootstrap.yaml (once)
-scripts/        start.sh
+  */overlays/minikube/   Argo CD instances
+  */overlays/flux/       Flux CD mirrors (separate namespaces)
+bootstrap/      Argo CD Autopilot + Helm self-management
+flux/
+  clusters/minikube/     Flux controllers + app/infra Kustomizations
+  infrastructure/        Flux namespaces + RBAC
+projects/       Argo AppProject + ApplicationSet
+infrastructure/ Argo-owned namespaces, rbac, redis
+scripts/        start.sh (Argo) + start-flux.sh (Flux)
 ```
 
 ```
-autopilot-bootstrap → argo-cd (Helm), root, cluster-resources
-  root → ApplicationSet → minikube-fastapi, minikube-api2, minikube-api3
-  cluster-resources → infrastructure/
+Argo: autopilot-bootstrap → apps/*/overlays/minikube → *-ns
+Flux: flux-system → apps/*/overlays/flux → flux-*-ns
+Same Git repo, same cluster, no overlapping objects.
 ```
