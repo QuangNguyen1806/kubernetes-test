@@ -4,7 +4,8 @@
 set -euo pipefail
 
 PROFILE="${MINIKUBE_PROFILE:-newprofile}"
-MEMORY="${MINIKUBE_MEMORY:-4096}"
+# Stay under Docker Desktop's VM memory (often ~3.9Gi on default Mac setups).
+MEMORY="${MINIKUBE_MEMORY:-3072}"
 CPUS="${MINIKUBE_CPUS:-2}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -32,7 +33,7 @@ if ! minikube start -p "$PROFILE" --driver=docker --memory="$MEMORY" --cpus="$CP
   echo "    minikube start failed — deleting profile and retrying once..."
   minikube delete -p "$PROFILE" || true
   minikube start -p "$PROFILE" --driver=docker --memory="$MEMORY" --cpus="$CPUS" \
-    || die "minikube start failed twice. Restart Docker Desktop and retry."
+    || die "minikube start failed twice. Give Docker Desktop more memory (Settings → Resources) or set MINIKUBE_MEMORY=2500 and retry."
 fi
 wait_apiserver || die "apiserver never became ready. Try: minikube delete -p $PROFILE && restart Docker."
 kubectl config use-context "$PROFILE" >/dev/null
