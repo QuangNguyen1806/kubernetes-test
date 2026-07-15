@@ -6,8 +6,8 @@ set -euo pipefail
 PROFILE="${MINIKUBE_PROFILE:-newprofile}"
 MEMORY="${MINIKUBE_MEMORY:-3072}"
 CPUS="${MINIKUBE_CPUS:-2}"
-# Pin operator install for reproducible bootstrap; HelmRelease keeps it updated in-cluster.
-OPERATOR_VERSION="${FLUX_OPERATOR_VERSION:-v0.55.0}"
+# Pin bootstrap chart; ResourceSet in operator.yaml owns ongoing upgrades in-cluster.
+OPERATOR_VERSION="${FLUX_OPERATOR_VERSION:-0.55.0}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
@@ -27,6 +27,7 @@ wait_apiserver() {
 echo "==> 1/6  Prerequisites"
 docker info >/dev/null 2>&1 || die "Start Docker Desktop first."
 command -v flux >/dev/null 2>&1 || die "Install Flux CLI: brew install fluxcd/tap/flux"
+command -v helm >/dev/null 2>&1 || die "Install Helm 3: brew install helm"
 command -v kubectl >/dev/null 2>&1 || die "kubectl is required."
 
 echo "==> 2/6  Minikube ($PROFILE, ${MEMORY}MB)"
@@ -51,8 +52,15 @@ docker build -t demo-api:latest .
 chmod +x scripts/generate-flux-apps.sh
 ./scripts/generate-flux-apps.sh
 
-echo "==> 4/6  Install Flux Operator (${OPERATOR_VERSION})"
-kubectl apply -f "https://github.com/controlplaneio-fluxcd/flux-operator/releases/download/${OPERATOR_VERSION}/install.yaml"
+echo "==> 4/6  Bootstrap Flux Operator (Helm ${OPERATOR_VERSION}; Git owns upgrades after sync)"
+if helm status flux-operator -n flux-system >/dev/null 2>&1; then
+  echo "    flux-operator Helm release already exists — skipping install"
+else
+  helm install flux-operator oci://ghcr.io/controlplaneio-fluxcd/charts/flux-operator \
+    --namespace flux-system --create-namespace \
+    --version "${OPERATOR_VERSION}" \
+    --wait --timeout 5m
+fi
 kubectl -n flux-system wait --for=condition=available deploy/flux-operator --timeout=300s
 
 echo "==> 5/6  Apply FluxInstance (self-managed Flux + Git sync)"
@@ -73,9 +81,24 @@ kubectl -n flux-system wait --for=condition=available \
   deploy/source-controller deploy/kustomize-controller deploy/helm-controller \
   --timeout=300s
 
-echo "==> 6/6  Wait for Flux apps (fail if not Ready)"
+echo "==> 6/6  Wait for Git sync + self-manage + apps"
 flux reconcile source git flux-system -n flux-system --timeout=2m || true
 flux reconcile kustomization flux-system -n flux-system --with-source --timeout=3m || true
+
+echo "    waiting for self-manage (ResourceSet + Operator HelmRelease)..."
+for _ in $(seq 1 60); do
+  rs=$(kubectl get resourceset flux-operator -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+  hr=$(kubectl get helmrelease flux-operator -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+  if [[ "$rs" == "True" && "$hr" == "True" ]]; then
+    break
+  fi
+  sleep 5
+done
+kubectl get resourceset,helmrelease,ocirepository -n flux-system 2>/dev/null | rg 'flux-operator|NAME' || true
+rs=$(kubectl get resourceset flux-operator -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+hr=$(kubectl get helmrelease flux-operator -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+[[ "$rs" == "True" ]] || die "ResourceSet flux-operator not Ready — Git self-manage failed"
+[[ "$hr" == "True" ]] || die "HelmRelease flux-operator not Ready — Operator not self-managed from Git"
 
 APPS_OK=0
 for _ in $(seq 1 60); do
@@ -132,8 +155,8 @@ echo "  kubectl port-forward -n flux-fastapi-ns svc/fastapi 8100:8000"
 echo "  kubectl port-forward -n flux-api2-ns svc/api2 8101:8000"
 echo "  kubectl port-forward -n flux-api3-ns svc/api3 8102:8000"
 echo ""
-echo "Self-manage:"
-echo "  Flux controllers → edit flux-instance.yaml distribution.version → git push"
-echo "  Flux Operator    → HelmRelease flux-operator (operator.yaml) tracks 0.55.x"
+echo "Self-manage (Git is source of truth after bootstrap):"
+echo "  Flux controllers → flux-instance.yaml distribution.version → git push"
+echo "  Flux Operator    → operator.yaml ResourceSet inputs.version (0.55.x) → git push"
 echo ""
 ./scripts/flux-status.sh

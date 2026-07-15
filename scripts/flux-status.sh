@@ -5,9 +5,19 @@ set -euo pipefail
 PROFILE="${MINIKUBE_PROFILE:-newprofile}"
 kubectl config use-context "$PROFILE" >/dev/null 2>&1 || true
 
-echo "=== Flux Operator / Instance ==="
+echo "=== Flux Operator / Instance (self-manage) ==="
 kubectl get deploy -n flux-system -l app.kubernetes.io/name=flux-operator 2>/dev/null || kubectl get deploy -n flux-system | rg -i 'flux-operator|NAME' || true
 kubectl get fluxinstance -n flux-system -o wide 2>/dev/null || echo "(no FluxInstance)"
+kubectl get resourceset,helmrelease,ocirepository -n flux-system 2>/dev/null \
+  | rg 'flux-operator|flux-system|NAME' || true
+echo ""
+echo "--- Self-manage Ready? ---"
+for kind in fluxinstance resourceset helmrelease; do
+  name=flux
+  [[ "$kind" == "fluxinstance" ]] || name=flux-operator
+  status=$(kubectl get "$kind" "$name" -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Missing")
+  echo "  $kind/$name: $status"
+done
 kubectl get fluxreport -n flux-system -o yaml 2>/dev/null | head -80 || true
 
 echo ""

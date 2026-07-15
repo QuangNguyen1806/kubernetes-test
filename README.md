@@ -56,14 +56,15 @@ git add apps/myapp && git commit -m "Add myapp to Argo" && git push
 
 ## Self-managed Flux
 
-| What | How |
-|------|-----|
-| **Flux controllers** | `FluxInstance` in `flux/clusters/minikube/flux-system/flux-instance.yaml` (`distribution.version: "2.x"`) |
-| **Flux Operator** | `HelmRelease` in `flux/clusters/minikube/operator.yaml` (tracks `0.55.x`) |
-| **Git sync** | `FluxInstance.spec.sync` → path `flux/clusters/minikube` |
+After `./scripts/start-flux.sh` seeds the cluster once, **Git owns all upgrades**:
 
-Upgrade Flux series: edit `distribution.version` → `git push`.  
-Upgrade Operator chart: bump `operator.yaml` chart version → `git push`.
+| What | Git manifest | Upgrade by |
+|------|--------------|------------|
+| **Flux controllers** | `flux/clusters/minikube/flux-system/flux-instance.yaml` | Edit `distribution.version` (e.g. `2.x`) → push |
+| **Flux Operator** | `flux/clusters/minikube/operator.yaml` | Edit ResourceSet `inputs.version` (e.g. `0.55.x`) → push |
+| **Cluster sync** | `FluxInstance.spec.sync` | Path `flux/clusters/minikube` (includes instance + operator manifests) |
+
+Bootstrap only installs the Operator (Helm) and applies `FluxInstance` once so Git sync can take over.
 
 ---
 
@@ -117,6 +118,7 @@ Repo: https://github.com/QuangNguyen1806/kubernetes-test.git
 
 - Docker Desktop, `minikube`, `kubectl`, `docker`
 - Flux: `flux` CLI (`brew install fluxcd/tap/flux`)
+- Helm 3 (`brew install helm`) — Flux Operator bootstrap
 - Argo path: `argocd` CLI optional
 
 ---
@@ -133,7 +135,7 @@ bootstrap/                    Argo Autopilot + Helm self-management
 flux/
   clusters/minikube/
     flux-system/flux-instance.yaml   Flux Operator managed Flux + Git sync
-    operator.yaml                    HelmRelease → self-manage Operator
+    operator.yaml                    ResourceSet → self-manage Operator (OCI + HelmRelease)
     apps.yaml                        single flux-apps Kustomization
     infrastructure.yaml
   infrastructure/             Flux Redis, RBAC (flux-intern-app), namespaces
