@@ -1,51 +1,17 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: flux-fastapi
+  name: flux-apps
   namespace: flux-system
 spec:
   interval: 15s
   retryInterval: 15s
-  timeout: 2m
+  timeout: 5m
   prune: true
   wait: true
-  path: ./apps/fastapi/overlays/flux
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  dependsOn:
-    - name: flux-infrastructure
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: flux-api2
-  namespace: flux-system
-spec:
-  interval: 15s
-  retryInterval: 15s
-  timeout: 2m
-  prune: true
-  wait: true
-  path: ./apps/api2/overlays/flux
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  dependsOn:
-    - name: flux-infrastructure
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: flux-api3
-  namespace: flux-system
-spec:
-  interval: 15s
-  retryInterval: 15s
-  timeout: 2m
-  prune: true
-  wait: true
-  path: ./apps/api3/overlays/flux
+  # Single entry for all Flux apps — discovered via apps/flux-apps (generated).
+  # Add an app: create apps/<name>/overlays/flux + ./scripts/generate-flux-apps.sh
+  path: ./apps/flux-apps
   sourceRef:
     kind: GitRepository
     name: flux-system

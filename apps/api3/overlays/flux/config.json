@@ -1,0 +1,6 @@
+{
+  "appName": "api3",
+  "userGivenName": "api3",
+  "destNamespace": "flux-api3-ns",
+  "srcPath": "apps/api3/overlays/flux"
+}

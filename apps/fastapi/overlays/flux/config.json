@@ -1,0 +1,6 @@
+{
+  "appName": "fastapi",
+  "userGivenName": "fastapi",
+  "destNamespace": "flux-fastapi-ns",
+  "srcPath": "apps/fastapi/overlays/flux"
+}

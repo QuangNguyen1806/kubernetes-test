@@ -1,0 +1,36 @@
+# Self-manage Flux Operator after bootstrap (Flux upgrades the operator via Helm).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: controlplane
+  namespace: flux-system
+spec:
+  interval: 1h
+  type: oci
+  url: oci://ghcr.io/controlplaneio-fluxcd/charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: flux-operator
+  namespace: flux-system
+spec:
+  interval: 1h
+  releaseName: flux-operator
+  chart:
+    spec:
+      chart: flux-operator
+      version: "0.55.x"
+      sourceRef:
+        kind: HelmRepository
+        name: controlplane
+  install:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  values:
+    installCRDs: true
