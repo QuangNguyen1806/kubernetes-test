@@ -78,7 +78,7 @@ Cluster-level metrics via `kube-prometheus-stack` (trimmed for Minikube):
 | Prometheus + Grafana + kube-state-metrics | `flux/monitoring/helmrelease.yaml` |
 | Sync wiring | `flux/clusters/minikube/monitoring.yaml` |
 
-**Minikube gotchas (fixed in-repo):** in-cluster image pulls of Grafana (~1GB) hang past Helm waits, and Grafana 13 cold-start migrations exceed default liveness probes. Bootstrap preloads images (`scripts/preload-monitoring-images.sh`) and the HelmRelease uses delayed probes + no sidecars/node-exporter.
+**Minikube gotchas (fixed in-repo):** in-cluster image pulls of Grafana (~1GB) hang past Helm waits; Grafana 13 cold-start migrations exceed default liveness probes; disabling admission webhooks without `prometheusOperator.tls.enabled=false` leaves the operator mounting a missing secret. Bootstrap preloads images (`scripts/preload-monitoring-images.sh`); HelmRelease uses delayed probes, no sidecars/node-exporter/kube-state-metrics, and `tls.enabled: false`.
 
 ```bash
 ./scripts/preload-monitoring-images.sh   # if Grafana stuck ContainerCreating
