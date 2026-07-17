@@ -5,3 +5,4 @@ resources:
   - infrastructure.yaml
   - apps.yaml
   - operator.yaml
+  - monitoring.yaml

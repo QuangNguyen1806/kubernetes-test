@@ -1,0 +1,97 @@
+# Phase 1 (cluster-level monitoring): Prometheus + Grafana + kube-state-metrics.
+# Trimmed for Minikube's constrained memory (MINIKUBE_MEMORY default 3072MB):
+#  - Alertmanager disabled (not needed for dashboards)
+#  - Control-plane scrape targets disabled (kubeControllerManager/Scheduler/Etcd/Proxy
+#    aren't reachable on Minikube's static-pod setup and would just show as "down")
+#  - Explicit low resource requests/limits on every component
+#  - Short Prometheus retention, no persistent storage (emptyDir is fine for a demo)
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: flux-system
+  annotations:
+    fluxcd.controlplane.io/reconcile: enabled
+spec:
+  interval: 1h
+  releaseName: kube-prometheus-stack
+  targetNamespace: monitoring
+  install:
+    createNamespace: true
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: "87.16.x"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+  values:
+    alertmanager:
+      enabled: false
+    kubeControllerManager:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+    kubeEtcd:
+      enabled: false
+    kubeProxy:
+      enabled: false
+    kubeStateMetrics:
+      enabled: true
+    nodeExporter:
+      enabled: true
+      resources:
+        requests:
+          cpu: 20m
+          memory: 32Mi
+        limits:
+          memory: 64Mi
+    prometheusOperator:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 256Mi
+      admissionWebhooks:
+        deployment:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+    prometheus:
+      prometheusSpec:
+        retention: 6h
+        scrapeInterval: 30s
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 512Mi
+        # No storageSpec — uses ephemeral emptyDir, fine for a demo/dev cluster.
+    grafana:
+      enabled: true
+      adminPassword: admin
+      defaultDashboardsEnabled: true
+      service:
+        type: ClusterIP
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 256Mi
+      sidecar:
+        dashboards:
+          enabled: true
+        datasources:
+          enabled: true

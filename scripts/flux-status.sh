@@ -50,6 +50,14 @@ for ns in flux-fastapi-ns flux-api2-ns flux-api3-ns flux-redis-ns; do
 done
 
 echo ""
+echo "=== Monitoring (Prometheus + Grafana) ==="
+status=$(kubectl get kustomization flux-monitoring -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Missing")
+echo "  kustomization/flux-monitoring: $status"
+hr=$(kubectl get helmrelease kube-prometheus-stack -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Missing")
+echo "  helmrelease/kube-prometheus-stack: $hr"
+kubectl get pods -n monitoring 2>/dev/null || echo "  (monitoring namespace not created yet)"
+
+echo ""
 echo "=== Recent warnings ==="
 kubectl get events -A --field-selector type=Warning --sort-by='.lastTimestamp' 2>/dev/null | tail -20 || true
 
