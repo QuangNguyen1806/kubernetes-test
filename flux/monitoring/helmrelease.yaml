@@ -53,6 +53,10 @@ spec:
     kubeStateMetrics:
       enabled: false
     prometheusOperator:
+      # Without this, chart still mounts kube-prometheus-stack-admission which is
+      # only created when admission webhooks are enabled → operator stuck ContainerCreating.
+      tls:
+        enabled: false
       admissionWebhooks:
         enabled: false
       resources:
