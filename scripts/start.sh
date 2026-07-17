@@ -11,15 +11,47 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 echo "==> 1/6  Docker"
 docker info >/dev/null 2>&1 || die "Start Docker Desktop first."
 
+MEMORY="${MINIKUBE_MEMORY:-3072}"
+CPUS="${MINIKUBE_CPUS:-2}"
+
+start_minikube() {
+  minikube start -p "$PROFILE" --driver=docker --memory="$MEMORY" --cpus="$CPUS"
+}
+
+wait_apiserver() {
+  for _ in $(seq 1 60); do
+    kubectl --context "$PROFILE" get --raw=/readyz >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  return 1
+}
+
+# Minikube can exit 0 ("Done!") even when the kubelet inside a reused
+# container is stuck (stale certs/identity) — apiserver readyz still passes,
+# so check node Ready explicitly and self-heal by recreating the profile.
+wait_node_ready() {
+  for _ in $(seq 1 45); do
+    status=$(kubectl --context "$PROFILE" get node "$PROFILE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+    [[ "$status" == "True" ]] && return 0
+    sleep 2
+  done
+  return 1
+}
+
 echo "==> 2/6  Minikube ($PROFILE)"
-minikube start -p "$PROFILE" --driver=docker --memory="${MINIKUBE_MEMORY:-3072}" --cpus="${MINIKUBE_CPUS:-2}"
-for _ in $(seq 1 60); do
-  kubectl --context "$PROFILE" get --raw=/readyz >/dev/null 2>&1 && break
-  sleep 2
-done
-kubectl --context "$PROFILE" get --raw=/readyz >/dev/null 2>&1 \
-  || { echo "ERROR: apiserver not ready" >&2; exit 1; }
+start_minikube
+wait_apiserver || die "apiserver not ready. Try: minikube delete -p $PROFILE && restart Docker."
 kubectl config use-context "$PROFILE" >/dev/null
+
+if ! wait_node_ready; then
+  echo "    node stuck NotReady (stale container state) — deleting profile and retrying once..."
+  minikube delete -p "$PROFILE" || true
+  start_minikube || die "minikube start failed on retry after deleting stale profile."
+  wait_apiserver || die "apiserver never became ready after profile recreate."
+  kubectl config use-context "$PROFILE" >/dev/null
+  wait_node_ready || die "node still NotReady after recreating profile — check: kubectl describe node $PROFILE"
+fi
+
 minikube -p "$PROFILE" addons enable metrics-server \
   || { echo "ERROR: failed to enable metrics-server" >&2; exit 1; }
 

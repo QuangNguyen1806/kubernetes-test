@@ -24,6 +24,27 @@ wait_apiserver() {
   return 1
 }
 
+# Minikube can report "Done!" (exit 0) even when the kubelet inside the
+# container is stuck (stale certs/identity from reusing an old container).
+# That shows up as node status "Unknown"/NotReady and NodeRestriction
+# "no relationship found between node ... and this object" errors — apiserver
+# readyz still passes, so we need a separate, explicit node-Ready check.
+wait_node_ready() {
+  echo "    waiting for node to report Ready..."
+  for _ in $(seq 1 45); do
+    status=$(kubectl --context "$PROFILE" get node "$PROFILE" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+    if [[ "$status" == "True" ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+start_minikube() {
+  minikube start -p "$PROFILE" --driver=docker --memory="$MEMORY" --cpus="$CPUS"
+}
+
 echo "==> 1/6  Prerequisites"
 docker info >/dev/null 2>&1 || die "Start Docker Desktop first."
 command -v flux >/dev/null 2>&1 || die "Install Flux CLI: brew install fluxcd/tap/flux"
@@ -31,14 +52,23 @@ command -v helm >/dev/null 2>&1 || die "Install Helm 3: brew install helm"
 command -v kubectl >/dev/null 2>&1 || die "kubectl is required."
 
 echo "==> 2/6  Minikube ($PROFILE, ${MEMORY}MB)"
-if ! minikube start -p "$PROFILE" --driver=docker --memory="$MEMORY" --cpus="$CPUS"; then
+if ! start_minikube; then
   echo "    minikube start failed — deleting profile and retrying once..."
   minikube delete -p "$PROFILE" || true
-  minikube start -p "$PROFILE" --driver=docker --memory="$MEMORY" --cpus="$CPUS" \
+  start_minikube \
     || die "minikube start failed twice. Give Docker Desktop more memory or set MINIKUBE_MEMORY=2500."
 fi
 wait_apiserver || die "apiserver never became ready. Try: minikube delete -p $PROFILE && restart Docker."
 kubectl config use-context "$PROFILE" >/dev/null
+
+if ! wait_node_ready; then
+  echo "    node stuck NotReady (stale container state) — deleting profile and retrying once..."
+  minikube delete -p "$PROFILE" || true
+  start_minikube || die "minikube start failed on retry after deleting stale profile."
+  wait_apiserver || die "apiserver never became ready after profile recreate."
+  kubectl config use-context "$PROFILE" >/dev/null
+  wait_node_ready || die "node still NotReady after recreating profile — check: kubectl describe node $PROFILE"
+fi
 
 echo "    enabling metrics-server (for HPA)..."
 minikube -p "$PROFILE" addons enable metrics-server \
@@ -94,7 +124,7 @@ for _ in $(seq 1 60); do
   fi
   sleep 5
 done
-kubectl get resourceset,helmrelease,ocirepository -n flux-system 2>/dev/null | rg 'flux-operator|NAME' || true
+kubectl get resourceset,helmrelease,ocirepository -n flux-system 2>/dev/null | grep -E 'flux-operator|NAME' || true
 rs=$(kubectl get resourceset flux-operator -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
 hr=$(kubectl get helmrelease flux-operator -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
 [[ "$rs" == "True" ]] || die "ResourceSet flux-operator not Ready — Git self-manage failed"
