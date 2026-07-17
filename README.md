@@ -70,20 +70,24 @@ Bootstrap only installs the Operator (Helm) and applies `FluxInstance` once so G
 
 ## Monitoring (Prometheus + Grafana)
 
-Cluster-level dashboards (pod CPU/memory, restarts, deployment health) via `kube-prometheus-stack`, self-managed the same way as everything else:
+Cluster-level metrics via `kube-prometheus-stack` (trimmed for Minikube):
 
 | What | Git manifest |
 |------|--------------|
 | Chart source | `flux/monitoring/helmrepository.yaml` |
-| Prometheus + Grafana + kube-state-metrics | `flux/monitoring/helmrelease.yaml` (trimmed for Minikube memory: no Alertmanager, no control-plane scrape targets, low resource requests, 6h retention) |
-| Sync wiring | `flux/clusters/minikube/monitoring.yaml` (depends on `flux-infrastructure`) |
+| Prometheus + Grafana + kube-state-metrics | `flux/monitoring/helmrelease.yaml` |
+| Sync wiring | `flux/clusters/minikube/monitoring.yaml` |
+
+**Minikube gotchas (fixed in-repo):** in-cluster image pulls of Grafana (~1GB) hang past Helm waits, and Grafana 13 cold-start migrations exceed default liveness probes. Bootstrap preloads images (`scripts/preload-monitoring-images.sh`) and the HelmRelease uses delayed probes + no sidecars/node-exporter.
 
 ```bash
+./scripts/preload-monitoring-images.sh   # if Grafana stuck ContainerCreating
+./scripts/verify-monitoring.sh           # wait until Grafana + Prometheus Ready
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
 # open http://localhost:3000  (user: admin / password: admin — demo only)
 ```
 
-Prometheus and the default Kubernetes dashboards are pre-wired via the Grafana sidecar — no manual data source setup needed.
+Prometheus is pre-wired as the Grafana datasource (no sidecar). Import community dashboards in the UI if desired (e.g. ID 315).
 
 Upgrade the chart: edit `version` in `helmrelease.yaml` → `git push`.
 

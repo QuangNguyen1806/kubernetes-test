@@ -76,10 +76,13 @@ minikube -p "$PROFILE" addons enable metrics-server \
 kubectl -n kube-system wait --for=condition=available deploy/metrics-server --timeout=180s \
   || echo "WARNING: metrics-server not Ready yet — HPA may warn until it is."
 
-echo "==> 3/6  Build image + refresh Flux app index"
+echo "==> 3/6  Build image + preload monitoring images + refresh Flux app index"
 eval "$(minikube -p "$PROFILE" docker-env)"
 docker build -t demo-api:latest .
-chmod +x scripts/generate-flux-apps.sh
+# Stay on minikube docker-env for preload (script toggles env itself safely).
+eval "$(minikube -p "$PROFILE" docker-env -u)" 2>/dev/null || true
+chmod +x scripts/preload-monitoring-images.sh scripts/generate-flux-apps.sh scripts/verify-monitoring.sh
+./scripts/preload-monitoring-images.sh
 ./scripts/generate-flux-apps.sh
 
 echo "==> 4/6  Bootstrap Flux Operator (Helm ${OPERATOR_VERSION}; Git owns upgrades after sync)"

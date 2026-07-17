@@ -1,10 +1,11 @@
 # Phase 1 (cluster-level monitoring): Prometheus + Grafana + kube-state-metrics.
-# Trimmed for Minikube's constrained memory (MINIKUBE_MEMORY default 3072MB):
-#  - Alertmanager disabled (not needed for dashboards)
-#  - Control-plane scrape targets disabled (kubeControllerManager/Scheduler/Etcd/Proxy
-#    aren't reachable on Minikube's static-pod setup and would just show as "down")
-#  - Explicit low resource requests/limits on every component
-#  - Short Prometheus retention, no persistent storage (emptyDir is fine for a demo)
+#
+# Root-cause mitigations for Minikube (~3072MB / Docker Desktop):
+# 1) Images are pre-pulled into the Minikube docker daemon (see scripts/preload-monitoring-images.sh)
+#    — in-cluster pulls of grafana (~1GB) hang past Helm wait windows.
+# 2) No Grafana sidecars / no node-exporter — fewer images + less memory overcommit.
+# 3) Grafana probes delayed — Grafana 13.x cold-start migrations exceed default liveness
+#    and the kubelet kills the container mid-boot ("failed liveness probe").
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -14,6 +15,7 @@ metadata:
     fluxcd.controlplane.io/reconcile: enabled
 spec:
   interval: 1h
+  timeout: 20m
   releaseName: kube-prometheus-stack
   targetNamespace: monitoring
   install:
@@ -44,54 +46,76 @@ spec:
       enabled: false
     kubeProxy:
       enabled: false
-    kubeStateMetrics:
-      enabled: true
     nodeExporter:
-      enabled: true
+      enabled: false
+    # kube-state-metrics disabled: saves ~1 deploy on 3GB Minikube; kubelet/cAdvisor
+    # scrapes still provide pod CPU/memory. Re-enable when MINIKUBE_MEMORY>=4096.
+    kubeStateMetrics:
+      enabled: false
+    prometheusOperator:
+      admissionWebhooks:
+        enabled: false
       resources:
         requests:
           cpu: 20m
-          memory: 32Mi
-        limits:
           memory: 64Mi
-    prometheusOperator:
-      resources:
-        requests:
-          cpu: 50m
-          memory: 128Mi
         limits:
-          memory: 256Mi
-      admissionWebhooks:
-        deployment:
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
+          memory: 128Mi
     prometheus:
       prometheusSpec:
-        retention: 6h
-        scrapeInterval: 30s
+        retention: 3h
+        scrapeInterval: 60s
         resources:
           requests:
-            cpu: 100m
-            memory: 256Mi
+            cpu: 50m
+            memory: 192Mi
           limits:
-            memory: 512Mi
-        # No storageSpec — uses ephemeral emptyDir, fine for a demo/dev cluster.
+            memory: 384Mi
     grafana:
       enabled: true
       adminPassword: admin
-      defaultDashboardsEnabled: true
+      # Pin the image that preload-monitoring-images.sh caches into Minikube.
+      image:
+        registry: docker.io
+        repository: grafana/grafana
+        tag: "13.1.0"
+      defaultDashboardsEnabled: false
+      sidecar:
+        dashboards:
+          enabled: false
+        datasources:
+          enabled: false
+      datasources:
+        datasources.yaml:
+          apiVersion: 1
+          datasources:
+            - name: Prometheus
+              type: prometheus
+              url: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/
+              access: proxy
+              isDefault: true
       service:
         type: ClusterIP
       resources:
         requests:
           cpu: 50m
-          memory: 128Mi
-        limits:
           memory: 256Mi
-      sidecar:
-        dashboards:
-          enabled: true
-        datasources:
-          enabled: true
+        limits:
+          memory: 512Mi
+      # Grafana 13 cold-start (SQLite migrations) regularly exceeds default probes on Minikube.
+      livenessProbe:
+        httpGet:
+          path: /api/health
+          port: 3000
+        initialDelaySeconds: 180
+        periodSeconds: 20
+        timeoutSeconds: 10
+        failureThreshold: 10
+      readinessProbe:
+        httpGet:
+          path: /api/health
+          port: 3000
+        initialDelaySeconds: 60
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 18
