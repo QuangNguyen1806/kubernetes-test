@@ -4,5 +4,6 @@ metadata:
   name: api2
 spec:
   ports:
-    - port: 8000
+    - name: http
+      port: 8000
       nodePort: 30181

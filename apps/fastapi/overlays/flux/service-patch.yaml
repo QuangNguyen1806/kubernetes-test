@@ -4,5 +4,6 @@ metadata:
   name: fastapi
 spec:
   ports:
-    - port: 8000
+    - name: http
+      port: 8000
       nodePort: 30180

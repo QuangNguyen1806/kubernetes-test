@@ -6,9 +6,9 @@ metadata:
 spec:
   interval: 15s
   retryInterval: 15s
-  timeout: 5m
+  timeout: 10m
   prune: true
-  wait: false # HelmRelease reconciliation is tracked separately (can take a few minutes)
+  wait: false # HelmReleases (Prometheus/Loki) tracked separately
   path: ./flux/monitoring
   sourceRef:
     kind: GitRepository

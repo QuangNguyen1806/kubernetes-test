@@ -1,11 +1,5 @@
-# Phase 1 (cluster-level monitoring): Prometheus + Grafana + kube-state-metrics.
-#
-# Root-cause mitigations for Minikube (~3072MB / Docker Desktop):
-# 1) Images are pre-pulled into the Minikube docker daemon (see scripts/preload-monitoring-images.sh)
-#    — in-cluster pulls of grafana (~1GB) hang past Helm wait windows.
-# 2) No Grafana sidecars / no node-exporter — fewer images + less memory overcommit.
-# 3) Grafana probes delayed — Grafana 13.x cold-start migrations exceed default liveness
-#    and the kubelet kills the container mid-boot ("failed liveness probe").
+# Phase 1+ (cluster + apps observability): Prometheus + Grafana + Loki datasources,
+# Git-provisioned dashboards, ServiceMonitor discovery, delayed Grafana probes.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -48,13 +42,9 @@ spec:
       enabled: false
     nodeExporter:
       enabled: false
-    # kube-state-metrics disabled: saves ~1 deploy on 3GB Minikube; kubelet/cAdvisor
-    # scrapes still provide pod CPU/memory. Re-enable when MINIKUBE_MEMORY>=4096.
     kubeStateMetrics:
       enabled: false
     prometheusOperator:
-      # Without this, chart still mounts kube-prometheus-stack-admission which is
-      # only created when admission webhooks are enabled → operator stuck ContainerCreating.
       tls:
         enabled: false
       admissionWebhooks:
@@ -68,7 +58,14 @@ spec:
     prometheus:
       prometheusSpec:
         retention: 3h
-        scrapeInterval: 60s
+        scrapeInterval: 30s
+        # Discover ServiceMonitors in any namespace (Flux apps).
+        serviceMonitorSelectorNilUsesHelmValues: false
+        serviceMonitorSelector: {}
+        serviceMonitorNamespaceSelector: {}
+        podMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelector: {}
+        podMonitorNamespaceSelector: {}
         resources:
           requests:
             cpu: 50m
@@ -77,8 +74,10 @@ spec:
             memory: 384Mi
     grafana:
       enabled: true
-      adminPassword: admin
-      # Pin the image that preload-monitoring-images.sh caches into Minikube.
+      admin:
+        existingSecret: grafana-auth
+        userKey: admin-user
+        passwordKey: admin-password
       image:
         registry: docker.io
         repository: grafana/grafana
@@ -89,15 +88,42 @@ spec:
           enabled: false
         datasources:
           enabled: false
+      # File-provisioned dashboards from ConfigMap flux-apps-dashboard.
+      dashboardProviders:
+        dashboardproviders.yaml:
+          apiVersion: 1
+          providers:
+            - name: default
+              orgId: 1
+              folder: Flux Apps
+              type: file
+              disableDeletion: false
+              editable: true
+              options:
+                path: /var/lib/grafana/dashboards/default
+      dashboardsConfigMaps:
+        default: flux-apps-dashboard
       datasources:
         datasources.yaml:
           apiVersion: 1
           datasources:
             - name: Prometheus
               type: prometheus
+              uid: prometheus
               url: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/
               access: proxy
               isDefault: true
+            - name: Loki
+              type: loki
+              uid: loki
+              # Use gateway (chart may not expose loki:3100 when gateway was off).
+              url: http://loki-gateway.monitoring.svc
+              access: proxy
+              isDefault: false
+              jsonData:
+                httpHeaderName1: X-Scope-OrgID
+              secureJsonData:
+                httpHeaderValue1: fake
       service:
         type: ClusterIP
       resources:
@@ -106,7 +132,6 @@ spec:
           memory: 256Mi
         limits:
           memory: 512Mi
-      # Grafana 13 cold-start (SQLite migrations) regularly exceeds default probes on Minikube.
       livenessProbe:
         httpGet:
           path: /api/health

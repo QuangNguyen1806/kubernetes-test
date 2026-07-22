@@ -1,0 +1,117 @@
+# Human viewer RBAC for Flux app namespaces (read-only: pods, logs, services, metrics).
+# Bind a user/group with: RoleBinding subject kind User/Group (see scripts/create-viewer-kubeconfig.sh).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: flux-app-viewer
+  labels:
+    app.kubernetes.io/managed-by: flux
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/status", "services", "endpoints", "configmaps", "events", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flux-app-viewer
+  namespace: flux-fastapi-ns
+  labels:
+    app.kubernetes.io/managed-by: flux
+subjects:
+  - kind: User
+    name: viewer
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: viewers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: flux-app-viewer
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flux-app-viewer
+  namespace: flux-api2-ns
+  labels:
+    app.kubernetes.io/managed-by: flux
+subjects:
+  - kind: User
+    name: viewer
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: viewers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: flux-app-viewer
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flux-app-viewer
+  namespace: flux-api3-ns
+  labels:
+    app.kubernetes.io/managed-by: flux
+subjects:
+  - kind: User
+    name: viewer
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: viewers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: flux-app-viewer
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flux-app-viewer
+  namespace: flux-redis-ns
+  labels:
+    app.kubernetes.io/managed-by: flux
+subjects:
+  - kind: User
+    name: viewer
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: viewers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: flux-app-viewer
+  apiGroup: rbac.authorization.k8s.io
+---
+# Read-only access to monitoring namespace (Grafana/Prometheus pods + services).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flux-app-viewer
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/managed-by: flux
+subjects:
+  - kind: User
+    name: viewer
+    apiGroup: rbac.authorization.k8s.io
+  - kind: Group
+    name: viewers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: flux-app-viewer
+  apiGroup: rbac.authorization.k8s.io

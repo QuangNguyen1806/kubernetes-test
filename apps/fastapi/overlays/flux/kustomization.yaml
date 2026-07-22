@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: flux-fastapi-ns
 resources:
   - ../../base
+  - servicemonitor.yaml
 images:
   - name: demo-api
     newName: demo-api
@@ -23,6 +24,7 @@ secretGenerator:
 patches:
   - path: deployment-patch.yaml
   - path: service-patch.yaml
+  - path: hpa-patch.yaml
   - patch: |-
       $patch: delete
       apiVersion: rbac.authorization.k8s.io/v1

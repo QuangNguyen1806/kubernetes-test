@@ -1,4 +1,4 @@
-# Shared Helm values for kube-prometheus-stack on Minikube (kept in sync with helmrelease.yaml).
+# Shared Helm values twin for kube-prometheus-stack (kept in sync with helmrelease.yaml).
 alertmanager:
   enabled: false
 kubeControllerManager:
@@ -27,7 +27,13 @@ prometheusOperator:
 prometheus:
   prometheusSpec:
     retention: 3h
-    scrapeInterval: 60s
+    scrapeInterval: 30s
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
     resources:
       requests:
         cpu: 50m
@@ -36,7 +42,10 @@ prometheus:
         memory: 384Mi
 grafana:
   enabled: true
-  adminPassword: admin
+  admin:
+    existingSecret: grafana-auth
+    userKey: admin-user
+    passwordKey: admin-password
   image:
     registry: docker.io
     repository: grafana/grafana
@@ -47,15 +56,40 @@ grafana:
       enabled: false
     datasources:
       enabled: false
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: default
+          orgId: 1
+          folder: Flux Apps
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+  dashboardsConfigMaps:
+    default: flux-apps-dashboard
   datasources:
     datasources.yaml:
       apiVersion: 1
       datasources:
         - name: Prometheus
           type: prometheus
+          uid: prometheus
           url: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/
           access: proxy
           isDefault: true
+        - name: Loki
+          type: loki
+          uid: loki
+          url: http://loki-gateway.monitoring.svc
+          access: proxy
+          isDefault: false
+          jsonData:
+            httpHeaderName1: X-Scope-OrgID
+          secureJsonData:
+            httpHeaderValue1: fake
   service:
     type: ClusterIP
   resources:

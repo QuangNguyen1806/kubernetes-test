@@ -1,0 +1,77 @@
+# Periodically ensures Grafana Viewer user exists (idempotent; safe for Flux reconcile).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: grafana-create-viewer
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/managed-by: flux
+spec:
+  schedule: "*/30 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 300
+      template:
+        metadata:
+          labels:
+            app: grafana-create-viewer
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: create-viewer
+              image: curlimages/curl:8.11.1
+              env:
+                - name: GF_ADMIN_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-auth
+                      key: admin-user
+                - name: GF_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-auth
+                      key: admin-password
+                - name: VIEWER_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-auth
+                      key: viewer-user
+                - name: VIEWER_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: grafana-auth
+                      key: viewer-password
+                - name: GRAFANA_URL
+                  value: http://kube-prometheus-stack-grafana.monitoring.svc
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  echo "Waiting for Grafana..."
+                  for i in $(seq 1 36); do
+                    if curl -sf "$GRAFANA_URL/api/health" >/dev/null; then
+                      break
+                    fi
+                    sleep 5
+                  done
+                  curl -sf "$GRAFANA_URL/api/health" >/dev/null
+
+                  CODE=$(curl -s -o /tmp/u.json -w "%{http_code}" \
+                    -u "$GF_ADMIN_USER:$GF_ADMIN_PASSWORD" \
+                    "$GRAFANA_URL/api/users/lookup?loginOrEmail=$VIEWER_USER" || true)
+                  if [ "$CODE" = "200" ]; then
+                    echo "Viewer user already exists"
+                    exit 0
+                  fi
+
+                  echo "Creating Grafana Viewer user '$VIEWER_USER'"
+                  curl -sf -X POST -u "$GF_ADMIN_USER:$GF_ADMIN_PASSWORD" \
+                    -H "Content-Type: application/json" \
+                    -d "{\"name\":\"Viewer\",\"email\":\"viewer@local\",\"login\":\"$VIEWER_USER\",\"password\":\"$VIEWER_PASSWORD\",\"OrgId\":1,\"role\":\"Viewer\"}" \
+                    "$GRAFANA_URL/api/admin/users"
+                  echo
+                  echo "Done"

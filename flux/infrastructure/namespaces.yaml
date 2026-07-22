@@ -33,3 +33,12 @@ metadata:
   name: flux-intern-app
   labels:
     app.kubernetes.io/managed-by: flux
+---
+# Created early so viewer RoleBinding can bind before Helm installs the stack.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/managed-by: flux
+    name: monitoring

@@ -3,4 +3,5 @@ kind: Kustomization
 resources:
   - namespaces.yaml
   - rbac.yaml
+  - viewer-rbac.yaml
   - redis.yaml

@@ -1,0 +1,43 @@
+# Promtail scrapes pod logs and ships them to Loki.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: promtail
+  namespace: flux-system
+spec:
+  interval: 1h
+  timeout: 10m
+  releaseName: promtail
+  targetNamespace: monitoring
+  dependsOn:
+    - name: loki
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  chart:
+    spec:
+      chart: promtail
+      version: "6.16.x"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+  values:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+    config:
+      clients:
+        - url: http://loki-gateway.monitoring.svc/loki/api/v1/push
+      snippets:
+        pipelineStages:
+          - cri: {}
+        # Prefer Flux app namespaces; still scrapes all pods (low volume on Minikube).
+        extraRelabelConfigs: []
