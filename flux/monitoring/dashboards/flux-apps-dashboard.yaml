@@ -44,7 +44,7 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"flux-fastapi-ns|flux-api2-ns|flux-api3-ns\", container!=\"\", container!=\"POD\"}[5m])) by (namespace, pod)",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"flux-fastapi-ns|flux-api2-ns|flux-api3-ns\", pod!=\"\"}[5m])) by (namespace, pod)",
               "legendFormat": "{{namespace}}/{{pod}}",
               "refId": "A"
             }
@@ -76,7 +76,7 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(container_memory_working_set_bytes{namespace=~\"flux-fastapi-ns|flux-api2-ns|flux-api3-ns\", container!=\"\", container!=\"POD\"}) by (namespace, pod)",
+              "expr": "sum(container_memory_working_set_bytes{namespace=~\"flux-fastapi-ns|flux-api2-ns|flux-api3-ns\", pod!=\"\"}) by (namespace, pod)",
               "legendFormat": "{{namespace}}/{{pod}}",
               "refId": "A"
             }
