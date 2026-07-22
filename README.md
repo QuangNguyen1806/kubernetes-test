@@ -173,8 +173,8 @@ Flux overlays cap **HPA maxReplicas: 1** (Minikube memory). Argo base still allo
 | Component | Manifest |
 |-----------|----------|
 | Prometheus + Grafana | `flux/monitoring/helmrelease.yaml` |
-| Loki | `flux/monitoring/loki.yaml` |
-| Promtail | `flux/monitoring/promtail.yaml` |
+| Loki | `flux/logging/loki.yaml` |
+| Promtail | `flux/logging/promtail.yaml` |
 | Dashboard | `flux/monitoring/dashboards/flux-apps-dashboard.yaml` |
 | Grafana auth Secret | `flux/monitoring/grafana-auth-secret.yaml` |
 | Viewer CronJob | `flux/monitoring/grafana-viewer-job.yaml` |
