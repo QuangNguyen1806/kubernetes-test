@@ -6,6 +6,4 @@ resources:
   - grafana-auth-secret.yaml
   - dashboards/flux-apps-dashboard.yaml
   - helmrelease.yaml
-  - loki.yaml
-  - promtail.yaml
   - grafana-viewer-job.yaml

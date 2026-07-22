@@ -141,9 +141,9 @@ hr=$(kubectl get helmrelease flux-operator -n flux-system -o jsonpath='{.status.
 [[ "$hr" == "True" ]] || die "HelmRelease flux-operator not Ready — Operator not self-managed from Git"
 
 APPS_OK=0
-for _ in $(seq 1 60); do
+for _ in $(seq 1 120); do
   READY_KS=0
-  for ks in flux-infrastructure flux-apps; do
+  for ks in flux-infrastructure flux-monitoring flux-apps; do
     status=$(kubectl get kustomization "$ks" -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
     if [[ "$status" == "True" ]]; then
       READY_KS=$((READY_KS + 1))
@@ -160,7 +160,7 @@ for _ in $(seq 1 60); do
     fi
   done
 
-  if [[ "$READY_KS" -ge 2 && "$READY_DEPLOY" -ge 3 ]]; then
+  if [[ "$READY_KS" -ge 3 && "$READY_DEPLOY" -ge 3 ]]; then
     APPS_OK=1
     break
   fi

@@ -6,3 +6,4 @@ resources:
   - apps.yaml
   - operator.yaml
   - monitoring.yaml
+  - logging.yaml

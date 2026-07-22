@@ -6,9 +6,10 @@ metadata:
 spec:
   interval: 15s
   retryInterval: 15s
-  # Wait until Prometheus/Grafana/Loki HelmReleases are Ready before flux-apps
+  # Wait until Prometheus + Grafana HelmRelease is Ready before flux-apps
   # start — otherwise apps + monitoring fight for ~3Gi Minikube RAM.
-  timeout: 25m
+  # Loki/Promtail live in flux-logging (non-blocking).
+  timeout: 20m
   prune: true
   wait: true
   path: ./flux/monitoring
@@ -17,3 +18,8 @@ spec:
     name: flux-system
   dependsOn:
     - name: flux-infrastructure
+  healthChecks:
+    - apiVersion: helm.toolkit.fluxcd.io/v2
+      kind: HelmRelease
+      name: kube-prometheus-stack
+      namespace: flux-system

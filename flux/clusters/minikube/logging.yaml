@@ -1,0 +1,19 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-logging
+  namespace: flux-system
+spec:
+  interval: 15s
+  retryInterval: 15s
+  # Non-blocking for apps: Loki/Promtail install after Prometheus/Grafana
+  # without delaying flux-apps (fits ~4Gi Docker Desktop).
+  timeout: 20m
+  prune: true
+  wait: false
+  path: ./flux/logging
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    - name: flux-monitoring
