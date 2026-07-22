@@ -6,7 +6,7 @@ metadata:
 spec:
   interval: 15s
   retryInterval: 15s
-  timeout: 2m
+  timeout: 5m
   prune: true
   wait: true
   path: ./flux/infrastructure
