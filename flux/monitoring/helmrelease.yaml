@@ -68,10 +68,10 @@ spec:
         podMonitorNamespaceSelector: {}
         resources:
           requests:
-            cpu: 50m
-            memory: 192Mi
+            cpu: 30m
+            memory: 128Mi
           limits:
-            memory: 384Mi
+            memory: 256Mi
     grafana:
       enabled: true
       admin:
@@ -116,8 +116,8 @@ spec:
             - name: Loki
               type: loki
               uid: loki
-              # Use gateway (chart may not expose loki:3100 when gateway was off).
-              url: http://loki-gateway.monitoring.svc
+              # Gateway disabled below to save a pod on ~3Gi Minikube.
+              url: http://loki.monitoring.svc:3100
               access: proxy
               isDefault: false
               jsonData:
@@ -128,23 +128,23 @@ spec:
         type: ClusterIP
       resources:
         requests:
-          cpu: 50m
-          memory: 256Mi
+          cpu: 30m
+          memory: 128Mi
         limits:
-          memory: 512Mi
+          memory: 384Mi
       livenessProbe:
         httpGet:
           path: /api/health
           port: 3000
-        initialDelaySeconds: 180
-        periodSeconds: 20
+        initialDelaySeconds: 300
+        periodSeconds: 30
         timeoutSeconds: 10
-        failureThreshold: 10
+        failureThreshold: 12
       readinessProbe:
         httpGet:
           path: /api/health
           port: 3000
-        initialDelaySeconds: 60
-        periodSeconds: 10
-        timeoutSeconds: 5
-        failureThreshold: 18
+        initialDelaySeconds: 120
+        periodSeconds: 15
+        timeoutSeconds: 10
+        failureThreshold: 24

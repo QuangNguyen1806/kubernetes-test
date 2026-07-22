@@ -52,28 +52,22 @@ spec:
       replicas: 1
       persistence:
         enabled: true
-        size: 2Gi
+        size: 1Gi
       resources:
         requests:
-          cpu: 50m
-          memory: 128Mi
+          cpu: 30m
+          memory: 96Mi
         limits:
-          memory: 384Mi
+          memory: 256Mi
     read:
       replicas: 0
     write:
       replicas: 0
     backend:
       replicas: 0
+    # Off on Minikube — saves an nginx pod; Grafana/Promtail talk to loki:3100.
     gateway:
-      enabled: true
-      verboseLogging: false
-      resources:
-        requests:
-          cpu: 10m
-          memory: 32Mi
-        limits:
-          memory: 64Mi
+      enabled: false
     test:
       enabled: false
     lokiCanary:

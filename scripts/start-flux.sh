@@ -50,6 +50,13 @@ docker info >/dev/null 2>&1 || die "Start Docker Desktop first."
 command -v flux >/dev/null 2>&1 || die "Install Flux CLI: brew install fluxcd/tap/flux"
 command -v helm >/dev/null 2>&1 || die "Install Helm 3: brew install helm"
 command -v kubectl >/dev/null 2>&1 || die "kubectl is required."
+# Full stack (Flux + 3 apps + Redis + Prometheus + Grafana + Loki) needs headroom.
+DOCKER_MEM_GIB=$(docker info --format '{{.MemTotal}}' 2>/dev/null | awk '{printf "%.1f", $1/1024/1024/1024}')
+if awk "BEGIN {exit !(${DOCKER_MEM_GIB:-0} < 5.5)}"; then
+  echo "WARNING: Docker Desktop memory is ${DOCKER_MEM_GIB:-?}GiB."
+  echo "         Recommend Settings → Resources → Memory ≥ 6 GiB for monitoring+apps."
+  echo "         Continuing with slim Minikube footprint (${MEMORY}MB)..."
+fi
 
 echo "==> 2/6  Minikube ($PROFILE, ${MEMORY}MB)"
 if ! start_minikube; then
@@ -171,8 +178,8 @@ REDIS_READY=$(kubectl get statefulset redis -n flux-redis-ns -o jsonpath='{.stat
 [[ "${REDIS_READY:-0}" -ge 1 ]] || die "flux Redis is not Ready in flux-redis-ns"
 
 echo ""
-echo "==> Waiting for monitoring (Grafana) — optional but recommended"
-MONITORING_READY_TIMEOUT="${MONITORING_READY_TIMEOUT:-420}" ./scripts/verify-monitoring.sh \
+echo "==> Waiting for monitoring (Grafana + Prometheus + Loki) before finishing"
+MONITORING_READY_TIMEOUT="${MONITORING_READY_TIMEOUT:-900}" ./scripts/verify-monitoring.sh \
   || echo "WARNING: monitoring not Ready yet — run ./scripts/verify-monitoring.sh later"
 
 echo ""

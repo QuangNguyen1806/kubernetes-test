@@ -3,6 +3,9 @@
 One **codebase** (`app/`), one **Dockerfile**, one image (`demo-api:latest`).  
 Argo and Flux can run side-by-side in **separate namespaces** (no resource fighting).
 
+> **Docker Desktop:** give the VM **≥ 6 GiB RAM** (Settings → Resources).  
+> Full Flux + apps + Prometheus/Grafana/Loki is tight on ~4 GiB.
+
 ## Quick start
 
 ### Flux-only (Flux Operator + monitoring)
@@ -68,7 +71,7 @@ To grant another person: create a cert with `/CN=<name>/O=viewers` (group `viewe
 | `viewer` | `viewer` | Viewer (dashboards read-only) |
 
 Credentials live in Secret `grafana-auth` (namespace `monitoring`).  
-A CronJob (`grafana-create-viewer`) keeps the Viewer user present; run `./scripts/ensure-grafana-viewer.sh` to create it immediately.
+A CronJob (`grafana-create-viewer`) can keep the Viewer user present but is **suspended by default** on Minikube (avoids fighting Grafana for RAM at cold start). Run `./scripts/ensure-grafana-viewer.sh` after Grafana is Ready.
 
 ---
 

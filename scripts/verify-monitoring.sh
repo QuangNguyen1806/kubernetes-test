@@ -35,6 +35,9 @@ while (( SECONDS < deadline )); do
   echo "  $(date +%H:%M:%S) grafana_ready=${g:-0} prometheus_ready=${p:-0} loki_ready=${l:-0}"
   if [[ "${g:-0}" -ge 1 && "${p:-0}" -ge 1 ]]; then
     echo "PASS: Grafana readyReplicas=$g Prometheus readyReplicas=$p (loki=${l:-0})"
+    if [[ "${l:-0}" -lt 1 ]]; then
+      echo "NOTE: Loki not Ready yet — log panels may be empty until Loki/Promtail finish."
+    fi
     "${KUBECTL[@]}" get pods -n monitoring
     exit 0
   fi

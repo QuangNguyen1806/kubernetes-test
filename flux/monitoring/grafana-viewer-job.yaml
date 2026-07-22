@@ -7,6 +7,10 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: flux
 spec:
+  # Suspended by default — cold-start Jobs fight Grafana for RAM on Minikube.
+  # Create the Viewer user with: ./scripts/ensure-grafana-viewer.sh
+  # Or: kubectl patch cronjob grafana-create-viewer -n monitoring -p '{"spec":{"suspend":false}}'
+  suspend: true
   schedule: "*/30 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1

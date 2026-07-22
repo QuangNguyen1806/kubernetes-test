@@ -11,7 +11,6 @@ IMAGES=(
   "quay.io/prometheus-operator/prometheus-config-reloader:v0.92.1"
   "docker.io/grafana/loki:3.4.2"
   "docker.io/grafana/promtail:3.4.2"
-  "docker.io/nginxinc/nginx-unprivileged:1.27-alpine"
   "docker.io/curlimages/curl:8.11.1"
 )
 

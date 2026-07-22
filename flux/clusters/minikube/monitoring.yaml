@@ -6,9 +6,11 @@ metadata:
 spec:
   interval: 15s
   retryInterval: 15s
-  timeout: 10m
+  # Wait until Prometheus/Grafana/Loki HelmReleases are Ready before flux-apps
+  # start — otherwise apps + monitoring fight for ~3Gi Minikube RAM.
+  timeout: 25m
   prune: true
-  wait: false # HelmReleases (Prometheus/Loki) tracked separately
+  wait: true
   path: ./flux/monitoring
   sourceRef:
     kind: GitRepository
