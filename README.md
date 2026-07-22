@@ -239,7 +239,8 @@ Repo: https://github.com/QuangNguyen1806/kubernetes-test.git
 app/ + Dockerfile                 shared image (demo-api) + /metrics + access logs
 apps/<name>/overlays/flux/        Flux overlay, HPA cap, ServiceMonitor
 flux/infrastructure/              namespaces, Redis, app RBAC, viewer RBAC
-flux/monitoring/                  Prometheus, Grafana, Loki, Promtail, dashboards
+flux/monitoring/                  Prometheus, Grafana, dashboards
+flux/logging/                     Loki + Promtail (non-blocking vs apps)
 scripts/
   start-flux.sh                   bootstrap
   preload-monitoring-images.sh
