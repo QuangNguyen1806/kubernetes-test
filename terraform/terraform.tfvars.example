@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars for local overrides (gitignored).
+# Defaults already target LocalStack; only change if your edge port differs.
+
+aws_region            = "us-east-1"
+localstack_endpoint   = "http://localhost:4566"
+localstack_account_id = "000000000000"
+project_name          = "kubernetes-test"
+
+# Dummy LocalStack credentials (not real AWS keys):
+# aws_access_key_id     = "test"
+# aws_secret_access_key = "test"

@@ -1,0 +1,25 @@
+# LocalStack Community — local AWS API emulator (no real AWS account).
+# Used by Terraform under terraform/. Application code does not call AWS today;
+# this stack is ready when AWS SDK usage is introduced.
+services:
+  localstack:
+    image: localstack/localstack:4.2.0
+    container_name: k8s-test-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      # Empty SERVICES = default Community set. Keep Community-only (no Pro).
+      - DEBUG=${LOCALSTACK_DEBUG:-0}
+      - PERSISTENCE=1
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - localstack-data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  localstack-data:

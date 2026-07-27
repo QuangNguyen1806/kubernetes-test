@@ -226,10 +226,29 @@ Repo: https://github.com/QuangNguyen1806/kubernetes-test.git
 
 ---
 
+## Local AWS (Terraform + LocalStack)
+
+The FastAPI apps **do not use AWS today** (storage is Redis). This repo still ships a
+**LocalStack + Terraform** workflow so local AWS IaC is safe and ready when needed.
+
+```bash
+./scripts/localstack-up.sh
+./scripts/tf-localstack.sh init
+./scripts/tf-localstack.sh apply    # STS smoke-check only; no aws_* resources yet
+./scripts/tf-localstack.sh verify
+./scripts/tf-localstack.sh destroy
+./scripts/localstack-down.sh
+```
+
+Details: [`terraform/README.md`](terraform/README.md). Env template: [`.env.example`](.env.example).
+
+---
+
 ## Prerequisites
 
 - Docker Desktop, `minikube`, `kubectl`, `docker`, `openssl` (viewer kubeconfig)
 - Flux CLI, Helm 3
+- Optional (LocalStack workflow): Terraform `>= 1.5` (`brew install terraform`), AWS CLI v2
 
 ---
 
@@ -248,4 +267,9 @@ scripts/
   create-viewer-kubeconfig.sh     K8s viewer user
   ensure-grafana-viewer.sh        Grafana Viewer user
   flux-status.sh
+  localstack-up.sh / localstack-down.sh
+  tf-localstack.sh                Terraform ↔ LocalStack only
+terraform/                        LocalStack-targeted IaC (no AWS resources yet)
+docker-compose.localstack.yml     LocalStack Community
+.env.example                      LocalStack/AWS CLI env template
 ```
