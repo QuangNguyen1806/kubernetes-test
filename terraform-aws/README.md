@@ -50,6 +50,25 @@ Terraform state → S3 (versioned + native lockfile)
 | `GET` | `/items/{id}` | Get one item | `GetItem` |
 | `DELETE` | `/items/{id}` | Delete one item | `DeleteItem` |
 
+**Input validation (POST /items):**
+
+| Rule | Detail |
+|------|--------|
+| Body | Must be a JSON object |
+| Allowed fields | `name` (required), `value` (optional) |
+| Types | Both must be strings; `name` trimmed, non-empty |
+| Length | `name` ≤ 128 chars, `value` ≤ 1024 chars |
+| `id` | Server-assigned only — rejected if sent in body |
+| Path `{id}` | Must be a valid UUID (GET/DELETE) |
+
+Invalid input returns HTTP `400` with `{"error":"..."}`.
+
+**Unit tests (no AWS needed):**
+```bash
+pip install -r terraform-aws/modules/lambda/requirements-dev.txt
+pytest terraform-aws/modules/lambda/tests -q
+```
+
 **Quick demo:**
 ```bash
 URL=$(terraform -chdir=terraform-aws output -raw api_url)
@@ -57,6 +76,9 @@ URL=$(terraform -chdir=terraform-aws output -raw api_url)
 # Create
 curl -X POST $URL/items -H 'Content-Type: application/json' -d '{"name":"foo","value":"bar"}'
 # → {"id": "<uuid>", "name": "foo", "value": "bar"}
+
+# Invalid (expect 400)
+curl -sS -X POST $URL/items -H 'Content-Type: application/json' -d '{"name":""}'
 
 # List
 curl $URL/items

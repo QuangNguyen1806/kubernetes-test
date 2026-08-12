@@ -3,7 +3,7 @@ Lambda handler — REST CRUD against DynamoDB + legacy S3 demo.
 
 Routes (all via API Gateway HTTP API proxy):
   GET  /                    → legacy: write hello.txt to S3
-  POST /items               → create item  (body: {"name": "...", ...})
+  POST /items               → create item  (body: {"name": "...", "value": "..."})
   GET  /items               → list all items
   GET  /items/{id}          → get one item by id
   DELETE /items/{id}        → delete one item by id
@@ -11,16 +11,25 @@ Routes (all via API Gateway HTTP API proxy):
 import json
 import logging
 import os
+import re
 import uuid
 
 import boto3
-from boto3.dynamodb.conditions import Key
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 TABLE_NAME = os.environ.get("DYNAMODB_TABLE", "")
 BUCKET_NAME = os.environ.get("BUCKET_NAME", "")
+
+# Create-body rules
+ALLOWED_FIELDS = frozenset({"name", "value"})
+NAME_MAX_LEN = 128
+VALUE_MAX_LEN = 1024
+UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 
 
 def _table():
@@ -43,22 +52,86 @@ def _err(message, status=400):
     }
 
 
+def _parse_json_object(raw):
+    """Return (data, None) or (None, error_response)."""
+    try:
+        data = json.loads(raw if raw is not None else "{}")
+    except json.JSONDecodeError:
+        return None, _err("Request body must be valid JSON")
+
+    if not isinstance(data, dict):
+        return None, _err("Request body must be a JSON object")
+
+    return data, None
+
+
+def _validate_create_body(data):
+    """
+    Validate POST /items body.
+
+    Allowed fields: name (required string), value (optional string).
+    Rejects unknown fields and client-supplied id.
+    Returns (cleaned_dict, None) or (None, error_response).
+    """
+    if "id" in data:
+        return None, _err("Do not send 'id'; it is assigned by the server")
+
+    unknown = sorted(set(data.keys()) - ALLOWED_FIELDS)
+    if unknown:
+        return None, _err(
+            f"Unknown field(s): {', '.join(unknown)}. "
+            f"Allowed: {', '.join(sorted(ALLOWED_FIELDS))}"
+        )
+
+    if "name" not in data:
+        return None, _err("Missing required field: name")
+
+    name = data["name"]
+    if not isinstance(name, str):
+        return None, _err("Field 'name' must be a string")
+    name = name.strip()
+    if not name:
+        return None, _err("Field 'name' must be a non-empty string")
+    if len(name) > NAME_MAX_LEN:
+        return None, _err(f"Field 'name' must be at most {NAME_MAX_LEN} characters")
+
+    cleaned = {"name": name}
+
+    if "value" in data:
+        value = data["value"]
+        if not isinstance(value, str):
+            return None, _err("Field 'value' must be a string")
+        if len(value) > VALUE_MAX_LEN:
+            return None, _err(f"Field 'value' must be at most {VALUE_MAX_LEN} characters")
+        cleaned["value"] = value
+
+    return cleaned, None
+
+
+def _validate_item_id(item_id):
+    """Return (id, None) or (None, error_response)."""
+    if not item_id:
+        return None, _err("Missing path parameter: id")
+    if not isinstance(item_id, str) or not UUID_RE.match(item_id):
+        return None, _err("Path parameter 'id' must be a valid UUID")
+    return item_id, None
+
+
 # ---------------------------------------------------------------------------
 # Route handlers
 # ---------------------------------------------------------------------------
 
 def create_item(event):
-    raw = event.get("body") or "{}"
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return _err("Request body must be valid JSON")
+    data, err = _parse_json_object(event.get("body"))
+    if err:
+        return err
 
-    if not isinstance(data, dict):
-        return _err("Request body must be a JSON object")
+    cleaned, err = _validate_create_body(data)
+    if err:
+        return err
 
     item_id = str(uuid.uuid4())
-    item = {"id": item_id, **data}
+    item = {"id": item_id, **cleaned}
 
     logger.info("create_item id=%s", item_id)
     _table().put_item(Item=item)
@@ -72,9 +145,9 @@ def list_items(_event):
 
 
 def get_item(event):
-    item_id = (event.get("pathParameters") or {}).get("id")
-    if not item_id:
-        return _err("Missing path parameter: id")
+    item_id, err = _validate_item_id((event.get("pathParameters") or {}).get("id"))
+    if err:
+        return err
 
     logger.info("get_item id=%s", item_id)
     result = _table().get_item(Key={"id": item_id})
@@ -85,9 +158,9 @@ def get_item(event):
 
 
 def delete_item(event):
-    item_id = (event.get("pathParameters") or {}).get("id")
-    if not item_id:
-        return _err("Missing path parameter: id")
+    item_id, err = _validate_item_id((event.get("pathParameters") or {}).get("id"))
+    if err:
+        return err
 
     logger.info("delete_item id=%s", item_id)
     _table().delete_item(Key={"id": item_id})
