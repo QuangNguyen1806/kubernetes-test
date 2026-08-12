@@ -43,6 +43,12 @@ variable "s3_bucket_arns" {
   default     = []
 }
 
+variable "dynamodb_table_arns" {
+  description = "DynamoDB table ARNs the function may perform CRUD on"
+  type        = list(string)
+  default     = []
+}
+
 variable "log_retention_in_days" {
   description = "CloudWatch log retention for Lambda logs"
   type        = number

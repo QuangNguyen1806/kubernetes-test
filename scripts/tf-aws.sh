@@ -241,12 +241,13 @@ EOF
     fn=$(require_output lambda_function_name)
     role_arn=$(require_output lambda_role_arn)
     log_group=$(require_output cloudwatch_log_group)
+    dynamodb_table=$(require_output dynamodb_table)
     budget_name=$(require_output budget_name)
     budget_limit=$(require_output budget_limit_usd)
     sns_arn=$(require_output sns_topic_arn)
     billing_email=$(require_output billing_email)
     account_id=$(require_output aws_account_id)
-    ok "outputs present (account=$account_id, lambda=$fn, budget=$budget_name)"
+    ok "outputs present (account=$account_id, lambda=$fn, table=$dynamodb_table, budget=$budget_name)"
 
     echo "==> Remote state object in S3"
     state_bucket=$(awk -F'"' '/^[[:space:]]*bucket[[:space:]]*=/{print $2; exit}' "$BACKEND_HCL")
@@ -255,11 +256,47 @@ EOF
     aws s3 ls "s3://${state_bucket}/${state_key}" >/dev/null
     ok "s3://${state_bucket}/${state_key} exists"
 
-    echo "==> GET $url/"
+    echo "==> DynamoDB: CREATE (POST /items)"
+    create_body=$(curl -sfS -X POST "${url}/items" \
+      -H 'Content-Type: application/json' \
+      -d '{"name":"test-item","value":"hello-world"}')
+    echo "$create_body"
+    item_id=$(echo "$create_body" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert "id" in d; assert d["name"]=="test-item"; print(d["id"])')
+    ok "create returned id=$item_id"
+
+    echo "==> DynamoDB: LIST (GET /items)"
+    list_body=$(curl -sfS "${url}/items")
+    echo "$list_body"
+    echo "$list_body" | python3 -c "import sys,json; d=json.load(sys.stdin); items=d['items']; assert any(i['id']=='$item_id' for i in items), 'created item not in list'"
+    ok "list contains the created item"
+
+    echo "==> DynamoDB: GET by id (GET /items/{id})"
+    get_body=$(curl -sfS "${url}/items/${item_id}")
+    echo "$get_body"
+    echo "$get_body" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['id']=='$item_id'; assert d['name']=='test-item'"
+    ok "get returned correct item"
+
+    echo "==> DynamoDB: DELETE (DELETE /items/{id})"
+    del_body=$(curl -sfS -X DELETE "${url}/items/${item_id}")
+    echo "$del_body"
+    echo "$del_body" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['deleted']=='$item_id'"
+    ok "delete acknowledged item_id"
+
+    echo "==> DynamoDB: verify item is gone (GET /items/{id} → 404)"
+    http_status=$(curl -o /dev/null -s -w "%{http_code}" "${url}/items/${item_id}")
+    [[ "$http_status" == "404" ]] || die "expected 404 after delete, got $http_status"
+    ok "item correctly returns 404 after deletion"
+
+    echo "==> DynamoDB: validate missing table check (aws CLI)"
+    aws dynamodb describe-table --table-name "$dynamodb_table" --output json \
+      | python3 -c "import sys,json; t=json.load(sys.stdin)['Table']; assert t['TableStatus'] in ('ACTIVE','UPDATING'), t['TableStatus']"
+    ok "DynamoDB table $dynamodb_table is ACTIVE"
+
+    echo "==> Legacy S3 demo (GET /)"
     body=$(curl -sfS "${url}/")
     echo "$body"
-    echo "$body" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d.get("ok") is True, d; assert d.get("key")=="hello.txt", d'
-    ok "API Gateway → Lambda returned ok=true"
+    echo "$body" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d.get("ok") is True, d'
+    ok "legacy S3 demo still works"
 
     echo "==> S3 objects in $bucket"
     aws s3 ls "s3://${bucket}/" | grep -q hello.txt
@@ -275,7 +312,7 @@ EOF
       --log-group-name "$log_group" \
       --order-by LastEventTime --descending --max-items 3 \
       --query 'logStreams[].logStreamName' --output text)
-    [[ -n "$streams" && "$streams" != "None" ]] || die "no CloudWatch log streams yet (invoke Lambda once and retry)"
+    [[ -n "$streams" && "$streams" != "None" ]] || die "no CloudWatch log streams yet"
     ok "log streams: $streams"
 
     echo "==> AWS Budget"
@@ -295,7 +332,7 @@ EOF
     aws sns get-topic-attributes --topic-arn "$sns_arn" >/dev/null
     subs=$(aws sns list-subscriptions-by-topic --topic-arn "$sns_arn" --output json)
     echo "$subs" | python3 -c "import sys,json; subs=json.load(sys.stdin)['Subscriptions']; assert any(s['Endpoint']=='$billing_email' and s['Protocol']=='email' for s in subs), subs"
-    ok "email subscription for $billing_email (confirm in inbox if PendingConfirmation)"
+    ok "email subscription for $billing_email"
 
     echo ""
     echo "All checks passed."

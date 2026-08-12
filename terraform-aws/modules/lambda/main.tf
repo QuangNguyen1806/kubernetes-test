@@ -34,6 +34,20 @@ data "aws_iam_policy_document" "lambda" {
       resources = [for arn in var.s3_bucket_arns : "${arn}/*"]
     }
   }
+
+  dynamic "statement" {
+    for_each = length(var.dynamodb_table_arns) > 0 ? [1] : []
+    content {
+      sid = "DynamoDBAccess"
+      actions = [
+        "dynamodb:PutItem",
+        "dynamodb:GetItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Scan",
+      ]
+      resources = var.dynamodb_table_arns
+    }
+  }
 }
 
 resource "aws_iam_role" "lambda" {
