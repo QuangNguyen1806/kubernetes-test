@@ -21,19 +21,53 @@ terraform-aws/
 | Component | Purpose |
 |-----------|---------|
 | `bootstrap/` | S3 bucket for **Terraform state** (versioned, encrypted, S3 lockfile) |
-| `module.lambda` | Python 3.12 Lambda, IAM, log group |
-| S3 demo bucket | Target for `hello.txt` |
-| API Gateway HTTP API | `GET /` → Lambda |
+| `module.lambda` | Python 3.12 Lambda, IAM, CloudWatch log group |
+| DynamoDB table | `k8s-test-demo-items` — stores items for the CRUD API |
+| S3 demo bucket | Target for the legacy `GET /` hello.txt demo |
+| API Gateway HTTP API | Routes `POST/GET/DELETE /items` and `GET /` to Lambda |
 | `module.billing` | SNS + monthly cost budget |
 
 ```text
-curl api_url/  →  API Gateway  →  Lambda  →  S3 (hello.txt)
-                                      ↓
-                               CloudWatch Logs
+POST   /items        →  API Gateway  →  Lambda  →  DynamoDB (PutItem)
+GET    /items        →  API Gateway  →  Lambda  →  DynamoDB (Scan)
+GET    /items/{id}   →  API Gateway  →  Lambda  →  DynamoDB (GetItem)
+DELETE /items/{id}   →  API Gateway  →  Lambda  →  DynamoDB (DeleteItem)
+GET    /             →  API Gateway  →  Lambda  →  S3 (hello.txt)
+                                           ↓
+                                    CloudWatch Logs
 
 AWS Budget → SNS → billing email
 
 Terraform state → S3 (versioned + native lockfile)
+```
+
+### Lambda CRUD routes
+
+| Method | Path | Action | DynamoDB operation |
+|--------|------|--------|--------------------|
+| `POST` | `/items` | Create item (auto UUID) | `PutItem` |
+| `GET` | `/items` | List all items | `Scan` |
+| `GET` | `/items/{id}` | Get one item | `GetItem` |
+| `DELETE` | `/items/{id}` | Delete one item | `DeleteItem` |
+
+**Quick demo:**
+```bash
+URL=$(terraform -chdir=terraform-aws output -raw api_url)
+
+# Create
+curl -X POST $URL/items -H 'Content-Type: application/json' -d '{"name":"foo","value":"bar"}'
+# → {"id": "<uuid>", "name": "foo", "value": "bar"}
+
+# List
+curl $URL/items
+# → {"items": [...]}
+
+# Get one
+curl $URL/items/<uuid>
+
+# Delete
+curl -X DELETE $URL/items/<uuid>
+# → {"deleted": "<uuid>"}
 ```
 
 ## Prerequisites
