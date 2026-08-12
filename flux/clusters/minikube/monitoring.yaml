@@ -4,8 +4,8 @@ metadata:
   name: flux-monitoring
   namespace: flux-system
 spec:
-  interval: 15s
-  retryInterval: 15s
+  interval: 5m
+  retryInterval: 1m
   # Wait until Prometheus + Grafana HelmRelease is Ready before flux-apps
   # start — otherwise apps + monitoring fight for ~3Gi Minikube RAM.
   # Loki/Promtail live in flux-logging (non-blocking).

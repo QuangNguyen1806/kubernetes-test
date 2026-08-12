@@ -141,15 +141,9 @@ hr=$(kubectl get helmrelease flux-operator -n flux-system -o jsonpath='{.status.
 [[ "$hr" == "True" ]] || die "HelmRelease flux-operator not Ready — Operator not self-managed from Git"
 
 APPS_OK=0
-for _ in $(seq 1 120); do
-  READY_KS=0
-  for ks in flux-infrastructure flux-monitoring flux-apps; do
-    status=$(kubectl get kustomization "$ks" -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
-    if [[ "$status" == "True" ]]; then
-      READY_KS=$((READY_KS + 1))
-    fi
-  done
-
+echo "    waiting for apps (deployments) + monitoring HelmRelease..."
+echo "    (Flux Kustomization Ready can flap during reconcile; we wait on workloads.)"
+for i in $(seq 1 120); do
   READY_DEPLOY=0
   for pair in flux-fastapi-ns/fastapi flux-api2-ns/api2 flux-api3-ns/api3; do
     ns="${pair%/*}"
@@ -160,7 +154,17 @@ for _ in $(seq 1 120); do
     fi
   done
 
-  if [[ "$READY_KS" -ge 3 && "$READY_DEPLOY" -ge 3 ]]; then
+  # Prefer concrete readiness over Kustomization Ready (which goes Unknown every reconcile).
+  mon_hr=$(kubectl get helmrelease kube-prometheus-stack -n flux-system \
+    -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+  redis_ready=$(kubectl get statefulset redis -n flux-redis-ns \
+    -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
+
+  if (( i % 6 == 1 )); then
+    echo "    … try ${i}/120 apps=${READY_DEPLOY}/3 grafana_stack_hr=${mon_hr:-?} redis=${redis_ready:-0}"
+  fi
+
+  if [[ "$READY_DEPLOY" -ge 3 && "$mon_hr" == "True" && "${redis_ready:-0}" -ge 1 ]]; then
     APPS_OK=1
     break
   fi
@@ -173,9 +177,6 @@ if [[ "$APPS_OK" -ne 1 ]]; then
   ./scripts/flux-status.sh || true
   die "bootstrap incomplete — see flux-status output above."
 fi
-
-REDIS_READY=$(kubectl get statefulset redis -n flux-redis-ns -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
-[[ "${REDIS_READY:-0}" -ge 1 ]] || die "flux Redis is not Ready in flux-redis-ns"
 
 echo ""
 echo "==> Waiting for monitoring (Grafana + Prometheus + Loki) before finishing"

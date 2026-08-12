@@ -4,8 +4,8 @@ metadata:
   name: flux-logging
   namespace: flux-system
 spec:
-  interval: 15s
-  retryInterval: 15s
+  interval: 5m
+  retryInterval: 1m
   # Non-blocking for apps: Loki/Promtail install after Prometheus/Grafana
   # without delaying flux-apps (fits ~4Gi Docker Desktop).
   timeout: 20m

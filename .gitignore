@@ -22,5 +22,29 @@ terraform/*_override.tf.json
 terraform/terraform.tfvars
 terraform/*.auto.tfvars
 
+terraform-aws/.terraform/
+terraform-aws/*.tfstate
+terraform-aws/*.tfstate.*
+terraform-aws/crash.log
+terraform-aws/crash.*.log
+terraform-aws/override.tf
+terraform-aws/override.tf.json
+terraform-aws/*_override.tf
+terraform-aws/*_override.tf.json
+terraform-aws/terraform.tfvars
+terraform-aws/*.auto.tfvars
+terraform-aws/backend.hcl
+terraform-aws/build/
+terraform-aws/modules/lambda/build/
+terraform-aws/.terraform-demo-validation/
+terraform-aws/.terraform-validate/
+terraform-aws/bootstrap/.terraform/
+terraform-aws/bootstrap/*.tfstate
+terraform-aws/bootstrap/*.tfstate.*
+terraform-aws/bootstrap/crash.log
+terraform-aws/bootstrap/crash.*.log
+terraform-aws/bootstrap/terraform.tfvars
+terraform-aws/bootstrap/*.auto.tfvars
+
 # LocalStack
 .localstack/

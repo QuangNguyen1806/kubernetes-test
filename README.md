@@ -1,124 +1,99 @@
-# FastAPI on Minikube — GitOps with Argo CD + Flux CD
+# Kubernetes Test Lab
 
-One **codebase** (`app/`), one **Dockerfile**, one image (`demo-api:latest`).  
-Argo and Flux can run side-by-side in **separate namespaces** (no resource fighting).
+A hands-on lab repo for running **FastAPI microservices on Minikube** with **GitOps** (Flux CD and optional Argo CD), full **observability** (Prometheus, Grafana, Loki), and **Terraform** workflows for both **LocalStack** (fake AWS) and **real AWS** (Lambda, API Gateway, S3, billing alerts).
 
-> **Docker Desktop:** give the VM **≥ 6 GiB RAM** (Settings → Resources).  
-> Full Flux + apps + Prometheus/Grafana/Loki is tight on ~4 GiB.
+**Repository:** https://github.com/QuangNguyen1806/kubernetes-test.git
 
-## Quick start
+---
 
-### Flux-only (Flux Operator + monitoring)
+## What this project is
+
+| Area | What you get |
+|------|----------------|
+| **Application** | One shared FastAPI image (`demo-api`) with Redis, `/metrics`, structured access logs |
+| **Kubernetes** | Three demo apps (`fastapi`, `api2`, `api3`) on Minikube, deployed via Flux |
+| **GitOps** | Flux Operator + self-managed FluxInstance; optional Argo CD side-by-side |
+| **Observability** | Prometheus, Grafana dashboards, Loki + Promtail, ServiceMonitors |
+| **Access control** | K8s read-only `viewer` user + Grafana Viewer role |
+| **Local AWS** | Terraform + LocalStack (safe local IaC, STS smoke-check) |
+| **Real AWS** | Terraform modules: Lambda, API Gateway, S3, billing (SNS + Budget), remote state in S3 |
+
+The FastAPI apps use **Redis only** today — they do not call AWS. The AWS stacks are separate learning/demo paths.
+
+---
+
+## Prerequisites
+
+### Kubernetes lab (required for Minikube path)
+
+| Tool | Purpose |
+|------|---------|
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Minikube driver (allocate **≥ 6 GiB RAM**) |
+| [minikube](https://minikube.sigs.k8s.io/) | Local cluster (`newprofile` by default) |
+| [kubectl](https://kubernetes.io/docs/tasks/tools/) | Cluster access |
+| [Flux CLI](https://fluxcd.io/flux/installation/) | Bootstrap helpers |
+| [Helm 3](https://helm.sh/) | Used by Flux for charts |
+| `openssl` | Viewer kubeconfig script |
+
+### AWS / Terraform (optional)
+
+| Tool | Purpose |
+|------|---------|
+| [Terraform](https://developer.hashicorp.com/terraform/install) `>= 1.5` | IaC |
+| [AWS CLI v2](https://aws.amazon.com/cli/) | Real AWS (`aws configure`) |
+| Docker Compose | LocalStack only |
+
+---
+
+## Install & clone
 
 ```bash
-cd "/Users/mac/Kubernetes Test"
-./scripts/start-flux.sh
-./scripts/flux-status.sh
-./scripts/verify-monitoring.sh
-./scripts/ensure-grafana-viewer.sh   # creates Grafana Viewer user if needed
+git clone https://github.com/QuangNguyen1806/kubernetes-test.git
+cd kubernetes-test
 ```
 
+No Python venv is required for the K8s path unless you hack on `app/` locally. For AWS scripts you need `terraform`, `aws`, `curl`, and `python3` on your PATH.
+
+---
+
+## Quick start — Kubernetes (Flux)
+
+### 1. Bootstrap the cluster
+
 ```bash
-# Apps
+./scripts/start-flux.sh
+```
+
+This starts Minikube, installs the Flux Operator, syncs Git manifests, waits for apps + monitoring, and prints status.
+
+### 2. Check health
+
+```bash
+./scripts/flux-status.sh
+./scripts/verify-monitoring.sh
+./scripts/ensure-grafana-viewer.sh   # optional Grafana Viewer user
+```
+
+### 3. Use the apps
+
+```bash
+# Terminal 1 — FastAPI apps
 kubectl port-forward -n flux-fastapi-ns svc/fastapi 8100:8000
 kubectl port-forward -n flux-api2-ns svc/api2 8101:8000
 kubectl port-forward -n flux-api3-ns svc/api3 8102:8000
 
-# Grafana
+# Terminal 2 — Grafana
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
-# http://localhost:3000
-# admin/admin  or  viewer/viewer
 ```
 
-### Argo + Flux
+| URL | What |
+|-----|------|
+| http://localhost:8100/docs | Swagger UI (fastapi) |
+| http://localhost:8100/health | Health check |
+| http://localhost:8100/metrics | Prometheus metrics |
+| http://localhost:3000 | Grafana (`admin`/`admin` or `viewer`/`viewer`) |
 
-```bash
-./scripts/start.sh
-./scripts/start-flux.sh
-```
-
----
-
-## Permissions (manage & grant access)
-
-### Kubernetes read-only user (`viewer`)
-
-Git defines `ClusterRole` `flux-app-viewer` + RoleBindings in Flux app namespaces and `monitoring` (`flux/infrastructure/viewer-rbac.yaml`).
-
-```bash
-./scripts/create-viewer-kubeconfig.sh
-# writes ~/.kube/viewer-newprofile.kubeconfig
-
-KUBECONFIG=~/.kube/viewer-newprofile.kubeconfig kubectl get pods -n flux-fastapi-ns
-KUBECONFIG=~/.kube/viewer-newprofile.kubeconfig kubectl logs -n flux-fastapi-ns deploy/fastapi --tail=50
-
-# Should be Forbidden:
-KUBECONFIG=~/.kube/viewer-newprofile.kubeconfig kubectl delete pod -n flux-fastapi-ns --all
-```
-
-| Role | Can |
-|------|-----|
-| **viewer** (K8s) | get/list/watch pods, logs, services, deployments, HPA in `flux-*-ns` + `monitoring` |
-| **admin** (your minikube context) | everything |
-
-To grant another person: create a cert with `/CN=<name>/O=viewers` (group `viewers` is already bound) or add a `RoleBinding` subject.
-
-### Grafana users
-
-| User | Password | Role |
-|------|----------|------|
-| `admin` | `admin` | Admin (full) |
-| `viewer` | `viewer` | Viewer (dashboards read-only) |
-
-Credentials live in Secret `grafana-auth` (namespace `monitoring`).  
-A CronJob (`grafana-create-viewer`) can keep the Viewer user present but is **suspended by default** on Minikube (avoids fighting Grafana for RAM at cold start). Run `./scripts/ensure-grafana-viewer.sh` after Grafana is Ready.
-
----
-
-## Application logs (view & query)
-
-### kubectl (always available)
-
-```bash
-kubectl logs -n flux-fastapi-ns deploy/fastapi -f
-kubectl logs -n flux-api2-ns deploy/api2 --since=10m
-kubectl logs -n flux-api3-ns -l app=api3 --tail=100
-```
-
-Apps emit structured access logs (JSON-ish) via middleware in `app/main.py`.
-
-### Grafana Explore → Loki
-
-1. Open Grafana → **Explore**
-2. Datasource: **Loki**
-3. Example LogQL:
-
-```logql
-{namespace="flux-fastapi-ns"}
-{namespace=~"flux-.*"} |= "ERROR"
-{namespace="flux-api2-ns"} |= "created item"
-```
-
-Pipeline: pods stdout → **Promtail** → **Loki** → Grafana.
-
----
-
-## Dashboard: CPU, memory, application logs
-
-Provisioned in Git as ConfigMap `flux-apps-dashboard` → Grafana folder **Flux Apps**.
-
-Open: **Dashboards → Flux Apps → Flux Apps — CPU, Memory & Logs**
-
-| Panel | Source |
-|-------|--------|
-| CPU by pod | Prometheus (`container_cpu_usage_seconds_total`) |
-| Memory by pod | Prometheus (`container_memory_working_set_bytes`) |
-| HTTP req/s | Prometheus (`http_requests_total` from `/metrics`) |
-| Latency p95 | Prometheus (`http_request_duration_seconds`) |
-| HTTP 5xx rate | Prometheus (`http_requests_total{status="5xx"}`) |
-| Application logs | Loki (`{namespace=~"flux-.*"}`) |
-
-Generate traffic so metrics/logs appear:
+Generate traffic so dashboards populate:
 
 ```bash
 curl -s http://localhost:8100/
@@ -126,150 +101,203 @@ curl -s http://localhost:8100/items
 curl -s -X POST http://localhost:8100/items -H 'content-type: application/json' -d '{"name":"a","value":"b"}'
 ```
 
-App `/metrics` is scraped via Flux `ServiceMonitor`s (`apps/*/overlays/flux/servicemonitor.yaml`).
+### 4. Tear down
+
+```bash
+minikube delete -p newprofile
+```
 
 ---
 
-## Add a new app (one place per tool)
+## Quick start — Argo CD + Flux (optional)
 
-### Flux (no edits to `flux/clusters/.../apps.yaml`)
+```bash
+./scripts/start.sh          # Argo CD
+./scripts/start-flux.sh     # Flux on top
+```
+
+---
+
+## Quick start — Local AWS (LocalStack)
+
+Safe local Terraform against fake AWS on port 4566. **No real charges.**
+
+```bash
+./scripts/localstack-up.sh
+./scripts/tf-localstack.sh init
+./scripts/tf-localstack.sh apply    # STS smoke-check
+./scripts/tf-localstack.sh verify
+./scripts/tf-localstack.sh destroy
+./scripts/localstack-down.sh
+```
+
+Details: [`terraform/README.md`](terraform/README.md) · Env template: [`.env.example`](.env.example)
+
+---
+
+## Quick start — Real AWS (Terraform lab)
+
+Creates API Gateway → Lambda → S3, plus billing alerts (SNS + Budget) and **remote Terraform state** in S3.
+
+```bash
+unset AWS_ENDPOINT_URL          # must be real AWS, not LocalStack
+cp terraform-aws/terraform.tfvars.example terraform-aws/terraform.tfvars
+# edit billing_email to YOUR real email
+
+./scripts/tf-aws.sh demo-validation   # show variable validation
+./scripts/tf-aws.sh bootstrap         # create state bucket → writes backend.hcl (local, gitignored)
+./scripts/tf-aws.sh apply
+./scripts/tf-aws.sh test              # full checklist
+curl "$(terraform -chdir=terraform-aws output -raw api_url)/"
+
+./scripts/tf-aws.sh destroy           # tear down lab resources
+./scripts/tf-aws.sh destroy-bootstrap # last: remove state bucket
+```
+
+**Important:** Confirm the SNS subscription email after apply or billing alerts will not arrive.
+
+Full walkthrough + AWS Console demo: [`terraform-aws/README.md`](terraform-aws/README.md)
+
+### Files you must NOT commit (gitignored)
+
+- `terraform-aws/terraform.tfvars` — your email and settings
+- `terraform-aws/backend.hcl` — your state bucket name
+- `terraform-aws/*.tfstate*` — Terraform state
+- `.env` — local secrets
+
+---
+
+## Permissions & access
+
+### Kubernetes read-only user (`viewer`)
+
+```bash
+./scripts/create-viewer-kubeconfig.sh
+# writes ~/.kube/viewer-newprofile.kubeconfig
+
+KUBECONFIG=~/.kube/viewer-newprofile.kubeconfig kubectl get pods -n flux-fastapi-ns
+```
+
+Defined in `flux/infrastructure/viewer-rbac.yaml`.
+
+### Grafana users (lab defaults)
+
+| User | Password | Role |
+|------|----------|------|
+| `admin` | `admin` | Admin |
+| `viewer` | `viewer` | Viewer |
+
+---
+
+## Logs & dashboards
+
+### kubectl
+
+```bash
+kubectl logs -n flux-fastapi-ns deploy/fastapi -f
+```
+
+### Grafana Explore → Loki
+
+```logql
+{namespace="flux-fastapi-ns"}
+{namespace=~"flux-.*"} |= "ERROR"
+```
+
+### Dashboard
+
+**Dashboards → Flux Apps → Flux Apps — CPU, Memory & Logs** (provisioned from Git)
+
+---
+
+## Add a new app
+
+### Flux (recommended)
 
 ```bash
 cp -R apps/api2/overlays/flux apps/myapp/overlays/flux
-# edit namespace / APP_NAME / MESSAGE / config.json / ServiceMonitor name
-# add namespace (+ viewer RoleBinding) under flux/infrastructure/
+# edit namespace, APP_NAME, ServiceMonitor, etc.
 ./scripts/generate-flux-apps.sh
-git add apps/myapp apps/flux-apps flux/infrastructure && git commit -m "Add myapp to Flux" && git push
+git add apps/myapp apps/flux-apps flux/infrastructure
+git commit -m "Add myapp to Flux"
+git push
 ```
 
-### Argo (ApplicationSet discovery)
+### Argo CD
 
 ```bash
 cp -R apps/api2/overlays/minikube apps/myapp/overlays/minikube
 git add apps/myapp && git commit -m "Add myapp to Argo" && git push
 ```
 
-| Tool | Register by | Auto-wired via |
-|------|-------------|----------------|
-| **Flux** | `apps/<name>/overlays/flux/` + `generate-flux-apps.sh` | single `flux-apps` Kustomization |
-| **Argo** | `apps/<name>/overlays/minikube/config.json` | ApplicationSet |
-
-Flux overlays cap **HPA maxReplicas: 1** (Minikube memory). Argo base still allows up to 3.
-
 ---
 
-## Self-managed Flux
-
-| What | Git manifest | Upgrade by |
-|------|--------------|------------|
-| **Flux controllers** | `flux/clusters/minikube/flux-system/flux-instance.yaml` | Edit `distribution.version` → push |
-| **Flux Operator** | `flux/clusters/minikube/operator.yaml` | Edit ResourceSet `inputs.version` → push |
-| **Cluster sync** | `FluxInstance.spec.sync` | Path `flux/clusters/minikube` |
-
----
-
-## Monitoring stack (GitOps)
-
-| Component | Manifest |
-|-----------|----------|
-| Prometheus + Grafana | `flux/monitoring/helmrelease.yaml` |
-| Loki | `flux/logging/loki.yaml` |
-| Promtail | `flux/logging/promtail.yaml` |
-| Dashboard | `flux/monitoring/dashboards/flux-apps-dashboard.yaml` |
-| Grafana auth Secret | `flux/monitoring/grafana-auth-secret.yaml` |
-| Viewer CronJob | `flux/monitoring/grafana-viewer-job.yaml` |
-| Sync | `flux/clusters/minikube/monitoring.yaml` |
+## Deploy code changes
 
 ```bash
-./scripts/preload-monitoring-images.sh
-./scripts/verify-monitoring.sh
-kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
+eval "$(minikube -p newprofile docker-env)"
+docker build -t demo-api:latest .
+kubectl rollout restart deployment -n flux-fastapi-ns,flux-api2-ns,flux-api3-ns
 ```
+
+Manifest changes: `git push origin main` — Flux reconciles from Git.
 
 ---
 
-## Troubleshoot
+## Troubleshooting
 
 ```bash
 ./scripts/flux-status.sh
 ./scripts/verify-monitoring.sh
 flux get kustomizations -A
-flux get helmreleases -A
-kubectl get servicemonitor -A
 kubectl logs -n monitoring -l app.kubernetes.io/name=promtail --tail=50
 ```
 
-If the API hangs / node NotReady (memory pressure):
+If the node is NotReady / API hangs (often memory):
 
 ```bash
 minikube delete -p newprofile
 ./scripts/start-flux.sh
 ```
 
----
-
-## Deploy config / code changes
+For AWS Terraform issues:
 
 ```bash
-# Manifests
-git push origin main
-
-# Python / Dockerfile → rebuild image
-eval "$(minikube -p newprofile docker-env)"
-docker build -t demo-api:latest .
-kubectl rollout restart deployment -n flux-fastapi-ns,flux-api2-ns,flux-api3-ns
+./scripts/tf-aws.sh validate
+./scripts/tf-aws.sh demo-validation
 ```
-
-**Teardown:** `minikube delete -p newprofile`
-
-Repo: https://github.com/QuangNguyen1806/kubernetes-test.git
-
----
-
-## Local AWS (Terraform + LocalStack)
-
-The FastAPI apps **do not use AWS today** (storage is Redis). This repo still ships a
-**LocalStack + Terraform** workflow so local AWS IaC is safe and ready when needed.
-
-```bash
-./scripts/localstack-up.sh
-./scripts/tf-localstack.sh init
-./scripts/tf-localstack.sh apply    # STS smoke-check only; no aws_* resources yet
-./scripts/tf-localstack.sh verify
-./scripts/tf-localstack.sh destroy
-./scripts/localstack-down.sh
-```
-
-Details: [`terraform/README.md`](terraform/README.md). Env template: [`.env.example`](.env.example).
-
----
-
-## Prerequisites
-
-- Docker Desktop, `minikube`, `kubectl`, `docker`, `openssl` (viewer kubeconfig)
-- Flux CLI, Helm 3
-- Optional (LocalStack workflow): Terraform `>= 1.5` (`brew install terraform`), AWS CLI v2
 
 ---
 
 ## Repository layout
 
 ```
-app/ + Dockerfile                 shared image (demo-api) + /metrics + access logs
-apps/<name>/overlays/flux/        Flux overlay, HPA cap, ServiceMonitor
-flux/infrastructure/              namespaces, Redis, app RBAC, viewer RBAC
-flux/monitoring/                  Prometheus, Grafana, dashboards
-flux/logging/                     Loki + Promtail (non-blocking vs apps)
+app/ + Dockerfile                 Shared FastAPI image + /metrics
+apps/<name>/overlays/flux/        Per-app Flux overlay, HPA, ServiceMonitor
+flux/
+  clusters/minikube/              Flux sync entrypoints (apps, infra, monitoring, logging)
+  infrastructure/                 Namespaces, Redis, RBAC, viewer access
+  monitoring/                     Prometheus, Grafana, dashboards
+  logging/                        Loki + Promtail
 scripts/
-  start-flux.sh                   bootstrap
-  preload-monitoring-images.sh
-  verify-monitoring.sh
-  create-viewer-kubeconfig.sh     K8s viewer user
-  ensure-grafana-viewer.sh        Grafana Viewer user
-  flux-status.sh
-  localstack-up.sh / localstack-down.sh
-  tf-localstack.sh                Terraform ↔ LocalStack only
-terraform/                        LocalStack-targeted IaC (no AWS resources yet)
+  start-flux.sh                   Minikube + Flux bootstrap
+  flux-status.sh                  Reconciliation status
+  verify-monitoring.sh            Prometheus/Grafana/Loki checks
+  tf-localstack.sh                Terraform ↔ LocalStack
+  tf-aws.sh                       Terraform ↔ real AWS
+terraform/                        LocalStack IaC
+terraform-aws/                    Real AWS IaC (modules: lambda, billing, bootstrap)
 docker-compose.localstack.yml     LocalStack Community
-.env.example                      LocalStack/AWS CLI env template
+.env.example                      LocalStack env template
 ```
+
+---
+
+## Self-managed Flux upgrades
+
+| Component | Manifest | Change |
+|-----------|----------|--------|
+| Flux controllers | `flux/clusters/minikube/flux-system/flux-instance.yaml` | `distribution.version` |
+| Flux Operator | `flux/clusters/minikube/operator.yaml` | ResourceSet `inputs.version` |
+
+Push to Git — Flux reconciles itself.

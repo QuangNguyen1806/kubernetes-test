@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars and set your email before plan/apply:
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# Terraform auto-loads terraform.tfvars in this directory.
+# You can also inject vars with:
+#   ./scripts/tf-aws.sh plan path/to/other.tfvars
+#   TF_VAR_billing_email=you@example.com ./scripts/tf-aws.sh plan
+
+aws_region       = "us-east-1"
+project_name     = "k8s-test-demo"
+billing_email    = "you@example.com"
+budget_limit_usd = 5
