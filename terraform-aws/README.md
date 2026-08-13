@@ -63,11 +63,37 @@ Terraform state → S3 (versioned + native lockfile)
 
 Invalid input returns HTTP `400` with `{"error":"..."}`.
 
+**Error handling:**
+
+| Situation | HTTP | Response |
+|-----------|------|----------|
+| Bad input (validation) | `400` | `{"error":"..."}` |
+| Item not found | `404` | `{"error":"Item '<uuid>' not found"}` |
+| Unknown route | `404` | `{"error":"Route not found: ..."}` |
+| DynamoDB / unexpected failure | `500` | `{"error":"DynamoDB operation failed"}` or `Internal server error` |
+
+DynamoDB calls are wrapped in try/except; failures are logged and never crash the Lambda.
+
+**Structured logging (Python `logging`):**
+
+Every operation emits JSON log lines to CloudWatch, e.g.:
+
+```json
+{"operation": "create_item", "status": "created", "item_id": "...", "http_status": 201}
+{"operation": "get_item", "status": "not_found", "item_id": "...", "http_status": 404}
+{"operation": "create_item", "status": "error", "error_type": "ClientError", "error": "..."}
+```
+
+Log levels: `info` (request/start/success), `warning` (validation), `error` (DynamoDB failure).
+
 **Unit tests (no AWS needed):**
 ```bash
+source venv/bin/activate
 pip install -r terraform-aws/modules/lambda/requirements-dev.txt
 pytest terraform-aws/modules/lambda/tests -q
 ```
+
+Tests cover: CRUD roundtrip, input validation, 404/500 error responses, and structured log output (pytest + moto).
 
 **Quick demo:**
 ```bash

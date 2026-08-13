@@ -15,6 +15,7 @@ import re
 import uuid
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -50,6 +51,12 @@ def _err(message, status=400):
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps({"error": message}),
     }
+
+
+def _log(level, operation, **fields):
+    """Emit one JSON log line per operation (CloudWatch-friendly)."""
+    payload = {"operation": operation, **fields}
+    getattr(logger, level)(json.dumps(payload, default=str))
 
 
 def _parse_json_object(raw):
@@ -117,61 +124,155 @@ def _validate_item_id(item_id):
     return item_id, None
 
 
+def _dynamo_call(operation, fn, **log_fields):
+    """
+    Run a DynamoDB call with error handling.
+
+    Returns (result, None) on success or (None, error_response) on failure.
+    """
+    try:
+        result = fn()
+        _log("info", operation, status="success", **log_fields)
+        return result, None
+    except (ClientError, BotoCoreError) as exc:
+        _log(
+            "error",
+            operation,
+            status="error",
+            error_type=type(exc).__name__,
+            error=str(exc),
+            **log_fields,
+        )
+        return None, _err("DynamoDB operation failed", status=500)
+    except Exception as exc:
+        _log(
+            "error",
+            operation,
+            status="error",
+            error_type=type(exc).__name__,
+            error=str(exc),
+            **log_fields,
+        )
+        return None, _err("Internal server error", status=500)
+
+
 # ---------------------------------------------------------------------------
 # Route handlers
 # ---------------------------------------------------------------------------
 
 def create_item(event):
+    _log("info", "create_item", status="started")
+
     data, err = _parse_json_object(event.get("body"))
     if err:
+        _log("warning", "create_item", status="validation_error", http_status=400)
         return err
 
     cleaned, err = _validate_create_body(data)
     if err:
+        _log("warning", "create_item", status="validation_error", http_status=400)
         return err
 
     item_id = str(uuid.uuid4())
     item = {"id": item_id, **cleaned}
 
-    logger.info("create_item id=%s", item_id)
-    _table().put_item(Item=item)
+    _, err = _dynamo_call(
+        "create_item",
+        lambda: _table().put_item(Item=item),
+        item_id=item_id,
+    )
+    if err:
+        return err
+
+    _log("info", "create_item", status="created", item_id=item_id, http_status=201)
     return _ok(item, status=201)
 
 
 def list_items(_event):
-    logger.info("list_items")
-    result = _table().scan()
-    return _ok({"items": result.get("Items", [])})
+    _log("info", "list_items", status="started")
+
+    result, err = _dynamo_call("list_items", lambda: _table().scan())
+    if err:
+        return err
+
+    items = result.get("Items", [])
+    _log("info", "list_items", status="completed", count=len(items), http_status=200)
+    return _ok({"items": items})
 
 
 def get_item(event):
     item_id, err = _validate_item_id((event.get("pathParameters") or {}).get("id"))
     if err:
+        _log("warning", "get_item", status="validation_error", http_status=400)
         return err
 
-    logger.info("get_item id=%s", item_id)
-    result = _table().get_item(Key={"id": item_id})
+    _log("info", "get_item", status="started", item_id=item_id)
+
+    result, err = _dynamo_call(
+        "get_item",
+        lambda: _table().get_item(Key={"id": item_id}),
+        item_id=item_id,
+    )
+    if err:
+        return err
+
     item = result.get("Item")
     if item is None:
+        _log("info", "get_item", status="not_found", item_id=item_id, http_status=404)
         return _err(f"Item '{item_id}' not found", status=404)
+
+    _log("info", "get_item", status="completed", item_id=item_id, http_status=200)
     return _ok(item)
 
 
 def delete_item(event):
     item_id, err = _validate_item_id((event.get("pathParameters") or {}).get("id"))
     if err:
+        _log("warning", "delete_item", status="validation_error", http_status=400)
         return err
 
-    logger.info("delete_item id=%s", item_id)
-    _table().delete_item(Key={"id": item_id})
+    _log("info", "delete_item", status="started", item_id=item_id)
+
+    _, err = _dynamo_call(
+        "delete_item",
+        lambda: _table().delete_item(Key={"id": item_id}),
+        item_id=item_id,
+    )
+    if err:
+        return err
+
+    _log("info", "delete_item", status="completed", item_id=item_id, http_status=200)
     return _ok({"deleted": item_id})
 
 
 def legacy_s3(_event):
     """Original demo: write hello.txt to S3."""
+    _log("info", "legacy_s3", status="started", bucket=BUCKET_NAME)
     key = "hello.txt"
-    boto3.client("s3").put_object(Bucket=BUCKET_NAME, Key=key, Body=b"hello from lambda")
-    logger.info("legacy_s3 bucket=%s key=%s", BUCKET_NAME, key)
+    try:
+        boto3.client("s3").put_object(Bucket=BUCKET_NAME, Key=key, Body=b"hello from lambda")
+    except (ClientError, BotoCoreError) as exc:
+        _log(
+            "error",
+            "legacy_s3",
+            status="error",
+            error_type=type(exc).__name__,
+            error=str(exc),
+            bucket=BUCKET_NAME,
+        )
+        return _err("S3 operation failed", status=500)
+    except Exception as exc:
+        _log(
+            "error",
+            "legacy_s3",
+            status="error",
+            error_type=type(exc).__name__,
+            error=str(exc),
+            bucket=BUCKET_NAME,
+        )
+        return _err("Internal server error", status=500)
+
+    _log("info", "legacy_s3", status="completed", bucket=BUCKET_NAME, key=key, http_status=200)
     return _ok({"ok": True, "message": "wrote object to S3", "bucket": BUCKET_NAME, "key": key})
 
 
@@ -183,7 +284,7 @@ def handler(event, context):
     method = (event.get("requestContext") or {}).get("http", {}).get("method", "GET")
     path = (event.get("requestContext") or {}).get("http", {}).get("path", "/")
 
-    logger.info("request method=%s path=%s", method, path)
+    _log("info", "request", status="received", method=method, path=path)
 
     # Strip trailing slash for matching
     path = path.rstrip("/") or "/"
@@ -203,4 +304,5 @@ def handler(event, context):
         if method == "DELETE":
             return delete_item(event)
 
+    _log("warning", "request", status="not_found", method=method, path=path, http_status=404)
     return _err(f"Route not found: {method} {path}", status=404)
