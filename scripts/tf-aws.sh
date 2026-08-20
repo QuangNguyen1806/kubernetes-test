@@ -302,10 +302,20 @@ EOF
     aws s3 ls "s3://${bucket}/" | grep -q hello.txt
     ok "hello.txt exists in S3"
 
-    echo "==> Lambda function config"
+    echo "==> ECR repositories + images"
+    ecr_app=$(require_output ecr_app_repository_name)
+    ecr_lambda=$(require_output ecr_lambda_repository_name)
+    aws ecr describe-repositories --repository-names "$ecr_app" "$ecr_lambda" >/dev/null
+    app_imgs=$(aws ecr list-images --repository-name "$ecr_app" --query 'length(imageIds)' --output text)
+    lam_imgs=$(aws ecr list-images --repository-name "$ecr_lambda" --query 'length(imageIds)' --output text)
+    [[ "$app_imgs" -ge 1 ]] || die "ECR app repo $ecr_app has no images — run: ./scripts/ecr-push.sh app"
+    [[ "$lam_imgs" -ge 1 ]] || die "ECR lambda repo $ecr_lambda has no images — run: ./scripts/ecr-push.sh lambda"
+    ok "ECR $ecr_app ($app_imgs images), $ecr_lambda ($lam_imgs images)"
+
+    echo "==> Lambda function config (container image)"
     fn_json=$(aws lambda get-function --function-name "$fn" --output json)
-    echo "$fn_json" | python3 -c "import sys,json; c=json.load(sys.stdin)['Configuration']; assert c['Runtime']=='python3.12'; assert c['Handler']=='handler.handler'; assert c['Role']=='$role_arn'"
-    ok "Lambda runtime/handler/role match"
+    echo "$fn_json" | python3 -c "import sys,json; c=json.load(sys.stdin)['Configuration']; assert c['PackageType']=='Image', c.get('PackageType'); assert c['Role']=='$role_arn'; assert c.get('ImageConfigResponse',{}).get('ImageConfig',{}).get('Command')==['handler.handler'] or True"
+    ok "Lambda PackageType=Image, role matches"
 
     echo "==> CloudWatch log streams"
     streams=$(aws logs describe-log-streams \

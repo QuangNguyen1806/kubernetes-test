@@ -21,11 +21,12 @@ terraform-aws/
 | Component | Purpose |
 |-----------|---------|
 | `bootstrap/` | S3 bucket for **Terraform state** (versioned, encrypted, S3 lockfile) |
-| `module.lambda` | Python 3.12 Lambda, IAM, CloudWatch log group |
+| `module.lambda` | Python 3.12 Lambda **container image** (from ECR), IAM, CloudWatch log group |
 | DynamoDB table | `k8s-test-demo-items` — stores items for the CRUD API |
 | S3 demo bucket | Target for the legacy `GET /` hello.txt demo |
 | API Gateway HTTP API | Routes `POST/GET/DELETE /items` and `GET /` to Lambda |
 | `module.billing` | SNS + monthly cost budget |
+| ECR repositories | `…-app` (FastAPI) + `…-lambda` (Lambda container). Push with `./scripts/ecr-push.sh`. |
 
 ```text
 POST   /items        →  API Gateway  →  Lambda  →  DynamoDB (PutItem)
@@ -38,8 +39,45 @@ GET    /             →  API Gateway  →  Lambda  →  S3 (hello.txt)
 
 AWS Budget → SNS → billing email
 
+ECR (empty) = Amazon's private Docker Hub — images would go here later; nothing pulls from it yet
+
 Terraform state → S3 (versioned + native lockfile)
 ```
+
+### ECR (Amazon Docker registry — scopes A–E)
+
+ECR is Amazon's private Docker Hub. This stack creates **two** repositories:
+
+| Repo | Image | Used by |
+|------|-------|---------|
+| `k8s-test-demo-app` | FastAPI (`Dockerfile`) | Minikube / Flux (via `ecr-minikube-sync.sh`) + CI |
+| `k8s-test-demo-lambda` | Lambda handler (container) | Lambda `package_type=Image` |
+
+**B — Build & push (local):**
+```bash
+unset AWS_ENDPOINT_URL
+./scripts/ecr-push.sh          # both images (linux/amd64)
+./scripts/ecr-push.sh app      # FastAPI only
+./scripts/ecr-push.sh lambda   # Lambda only
+aws ecr list-images --repository-name k8s-test-demo-app
+aws ecr list-images --repository-name k8s-test-demo-lambda
+```
+
+**C — Lambda from ECR:** push the Lambda image **before** `terraform apply` (Terraform resolves `:latest` → digest). The function uses `package_type = Image`, not a zip.
+
+**D — Minikube from ECR:**
+```bash
+./scripts/ecr-push.sh app
+# Minikube already running:
+./scripts/ecr-minikube-sync.sh
+# Or bootstrap Flux using ECR instead of local docker build:
+USE_ECR=1 ./scripts/start-flux.sh
+```
+
+**E — CI (GitHub Actions):** `.github/workflows/build.yml` always pushes FastAPI to GHCR. To also push both images to ECR, set:
+- Repository variable `PUSH_TO_ECR=true`
+- Secret `AWS_ROLE_TO_ASSUME` (IAM role ARN for GitHub OIDC)
+- Optional vars: `AWS_REGION`, `ECR_APP_REPO`, `ECR_LAMBDA_REPO`
 
 ### Lambda CRUD routes
 

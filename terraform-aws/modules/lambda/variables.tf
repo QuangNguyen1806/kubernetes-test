@@ -13,16 +13,15 @@ variable "policy_name" {
   type        = string
 }
 
-variable "handler" {
-  description = "Lambda handler (file.function)"
+variable "image_uri" {
+  description = "ECR image URI for the Lambda function (package_type=Image)"
   type        = string
-  default     = "handler.handler"
 }
 
-variable "runtime" {
-  description = "Lambda runtime"
+variable "handler" {
+  description = "Container image CMD override (file.function)"
   type        = string
-  default     = "python3.12"
+  default     = "handler.handler"
 }
 
 variable "timeout" {

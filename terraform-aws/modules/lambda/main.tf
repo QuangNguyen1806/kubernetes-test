@@ -65,22 +65,17 @@ resource "aws_iam_role_policy_attachment" "lambda" {
   policy_arn = aws_iam_policy.lambda.arn
 }
 
-data "archive_file" "lambda" {
-  type        = "zip"
-  source_file = "${path.module}/src/handler.py"
-  output_path = "${path.module}/build/handler.zip"
-}
-
+# Container image from ECR (scope C). Zip packaging removed.
 resource "aws_lambda_function" "this" {
   function_name = var.function_name
   role          = aws_iam_role.lambda.arn
-  handler       = var.handler
-  runtime       = var.runtime
+  package_type  = "Image"
+  image_uri     = var.image_uri
+  timeout       = var.timeout
 
-  filename         = data.archive_file.lambda.output_path
-  source_code_hash = data.archive_file.lambda.output_base64sha256
-
-  timeout = var.timeout
+  image_config {
+    command = [var.handler]
+  }
 
   environment {
     variables = var.environment

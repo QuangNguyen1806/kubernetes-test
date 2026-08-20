@@ -85,10 +85,17 @@ kubectl -n kube-system wait --for=condition=available deploy/metrics-server --ti
 
 echo "==> 3/6  Build image + preload monitoring images + refresh Flux app index"
 eval "$(minikube -p "$PROFILE" docker-env)"
-docker build -t demo-api:latest .
+if [[ "${USE_ECR:-0}" == "1" ]]; then
+  echo "    USE_ECR=1 — syncing FastAPI image from Amazon ECR into Minikube"
+  eval "$(minikube -p "$PROFILE" docker-env -u)" 2>/dev/null || true
+  "$ROOT/scripts/ecr-minikube-sync.sh"
+  eval "$(minikube -p "$PROFILE" docker-env)"
+else
+  docker build -t demo-api:latest .
+fi
 # Stay on minikube docker-env for preload (script toggles env itself safely).
 eval "$(minikube -p "$PROFILE" docker-env -u)" 2>/dev/null || true
-chmod +x scripts/preload-monitoring-images.sh scripts/generate-flux-apps.sh scripts/verify-monitoring.sh
+chmod +x scripts/preload-monitoring-images.sh scripts/generate-flux-apps.sh scripts/verify-monitoring.sh scripts/ecr-push.sh scripts/ecr-minikube-sync.sh
 ./scripts/preload-monitoring-images.sh
 ./scripts/generate-flux-apps.sh
 

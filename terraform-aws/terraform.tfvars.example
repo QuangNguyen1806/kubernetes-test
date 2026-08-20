@@ -10,3 +10,4 @@ aws_region       = "us-east-1"
 project_name     = "k8s-test-demo"
 billing_email    = "you@example.com"
 budget_limit_usd = 5
+lambda_image_tag = "latest" # push with: ./scripts/ecr-push.sh lambda

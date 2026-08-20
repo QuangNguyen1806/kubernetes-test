@@ -1,9 +1,11 @@
 # Real AWS lab stack (module composition):
 #   module.billing  → SNS + AWS Budget
-#   module.lambda   → Python Lambda + IAM + CloudWatch
+#   module.lambda   → Python Lambda (container image from ECR) + IAM + CloudWatch
 #   S3 + DynamoDB (items table) + API Gateway HTTP API → Lambda
+#   ECR             → FastAPI app image + Lambda image repositories
 
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 # --- S3 ---
 resource "aws_s3_bucket" "demo" {
@@ -20,6 +22,88 @@ resource "aws_s3_bucket_public_access_block" "demo" {
   restrict_public_buckets = true
 }
 
+# --- ECR: FastAPI / K8s app image (scopes A/B/D/E) ---
+resource "aws_ecr_repository" "app" {
+  name                 = "${var.project_name}-app"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true # lab only
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "app" {
+  repository = aws_ecr_repository.app.name
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep last 10 images"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
+      }
+      action = { type = "expire" }
+    }]
+  })
+}
+
+# --- ECR: Lambda container image (scopes B/C/E) ---
+resource "aws_ecr_repository" "lambda" {
+  name                 = "${var.project_name}-lambda"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true # lab only
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "lambda" {
+  repository = aws_ecr_repository.lambda.name
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep last 10 images"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
+      }
+      action = { type = "expire" }
+    }]
+  })
+}
+
+# Lambda service principal may pull this image (same account).
+resource "aws_ecr_repository_policy" "lambda" {
+  repository = aws_ecr_repository.lambda.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowLambdaPull"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+      Action = [
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchCheckLayerAvailability",
+      ]
+    }]
+  })
+}
+
+# Resolve pushed image by tag → digest so Terraform detects new pushes of :latest
+data "aws_ecr_image" "lambda" {
+  repository_name = aws_ecr_repository.lambda.name
+  image_tag       = var.lambda_image_tag
+
+  depends_on = [aws_ecr_repository.lambda]
+}
+
 # --- DynamoDB items table ---
 resource "aws_dynamodb_table" "items" {
   name         = "${var.project_name}-items"
@@ -32,13 +116,14 @@ resource "aws_dynamodb_table" "items" {
   }
 }
 
-# --- Lambda (reusable module) ---
+# --- Lambda (container image from ECR) ---
 module "lambda" {
   source = "./modules/lambda"
 
   function_name       = "${var.project_name}-fn"
   role_name           = "${var.project_name}-lambda-role"
   policy_name         = "${var.project_name}-lambda-policy"
+  image_uri           = "${aws_ecr_repository.lambda.repository_url}@${data.aws_ecr_image.lambda.image_digest}"
   s3_bucket_arns      = [aws_s3_bucket.demo.arn]
   dynamodb_table_arns = [aws_dynamodb_table.items.arn]
 
@@ -46,6 +131,8 @@ module "lambda" {
     BUCKET_NAME    = aws_s3_bucket.demo.bucket
     DYNAMODB_TABLE = aws_dynamodb_table.items.name
   }
+
+  depends_on = [aws_ecr_repository_policy.lambda]
 }
 
 # --- Billing alerts (SNS + AWS Budget) ---

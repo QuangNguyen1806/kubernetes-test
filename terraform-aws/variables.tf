@@ -40,3 +40,9 @@ variable "budget_limit_usd" {
     error_message = "budget_limit_usd must be greater than 0."
   }
 }
+
+variable "lambda_image_tag" {
+  description = "ECR tag for the Lambda container image (push with ./scripts/ecr-push.sh first)"
+  type        = string
+  default     = "latest"
+}

@@ -38,6 +38,7 @@ terraform-aws/build/
 terraform-aws/modules/lambda/build/
 terraform-aws/.terraform-demo-validation/
 terraform-aws/.terraform-validate/
+terraform-aws/.terraform-ecr-apply/
 terraform-aws/bootstrap/.terraform/
 terraform-aws/bootstrap/*.tfstate
 terraform-aws/bootstrap/*.tfstate.*

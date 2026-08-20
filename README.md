@@ -16,9 +16,26 @@ A hands-on lab repo for running **FastAPI microservices on Minikube** with **Git
 | **Observability** | Prometheus, Grafana dashboards, Loki + Promtail, ServiceMonitors |
 | **Access control** | K8s read-only `viewer` user + Grafana Viewer role |
 | **Local AWS** | Terraform + LocalStack (safe local IaC, STS smoke-check) |
-| **Real AWS** | Terraform modules: Lambda, API Gateway, S3, billing (SNS + Budget), remote state in S3 |
+| **Real AWS** | Terraform: Lambda (**container from ECR**), API Gateway, S3, DynamoDB CRUD, billing, **ECR** (app + lambda images) |
 
 The FastAPI apps use **Redis only** today — they do not call AWS. The AWS stacks are separate learning/demo paths.
+
+### ECR (Amazon Docker registry)
+
+| Scope | What | How |
+|-------|------|-----|
+| **A** | Empty ECR repos | Terraform `aws_ecr_repository` (app + lambda) |
+| **B** | Build & push images | `./scripts/ecr-push.sh` |
+| **C** | Lambda runs container from ECR | Terraform `package_type=Image` after push |
+| **D** | Minikube runs FastAPI from ECR | `./scripts/ecr-minikube-sync.sh` or `USE_ECR=1 ./scripts/start-flux.sh` |
+| **E** | CI push to ECR | GitHub Actions + `PUSH_TO_ECR=true` + OIDC role |
+
+```bash
+unset AWS_ENDPOINT_URL
+./scripts/ecr-push.sh                 # B: push FastAPI + Lambda images
+# then terraform apply (C uses the Lambda image)
+./scripts/ecr-minikube-sync.sh        # D: load app image into Minikube
+```
 
 ---
 
