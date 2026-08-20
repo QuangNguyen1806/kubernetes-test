@@ -39,7 +39,7 @@ GET    /             →  API Gateway  →  Lambda  →  S3 (hello.txt)
 
 AWS Budget → SNS → billing email
 
-ECR (empty) = Amazon's private Docker Hub — images would go here later; nothing pulls from it yet
+ECR (Amazon Docker registry) → Lambda container image + Minikube FastAPI image
 
 Terraform state → S3 (versioned + native lockfile)
 ```
@@ -63,7 +63,19 @@ aws ecr list-images --repository-name k8s-test-demo-app
 aws ecr list-images --repository-name k8s-test-demo-lambda
 ```
 
-**C — Lambda from ECR:** push the Lambda image **before** `terraform apply` (Terraform resolves `:latest` → digest). The function uses `package_type = Image`, not a zip.
+**C — Lambda from ECR (not zip):** Python `handler.py` is packaged in a container (`modules/lambda/Dockerfile`), pushed to ECR, and deployed with `package_type = Image`. Terraform resolves `lambda_image_tag` → digest so deployments are immutable.
+
+**Version management:**
+
+| Step | Command |
+|------|---------|
+| Push with `latest` + git SHA | `./scripts/ecr-push.sh lambda` |
+| Push explicit version | `IMAGE_TAG=v1.2.3 ./scripts/ecr-push.sh lambda` |
+| Deploy pinned version | `./scripts/ecr-deploy-lambda.sh v1.2.3` |
+| Explore repos/images | `./scripts/ecr-explore.sh` |
+| Full local test (real AWS) | `./scripts/ecr-test.sh` |
+
+Terraform variable `lambda_image_tag` (default `latest`) selects which ECR tag to resolve to a digest. Lifecycle policies keep the last 10 images per repo.
 
 **D — Minikube from ECR:**
 ```bash

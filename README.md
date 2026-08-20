@@ -25,15 +25,26 @@ The FastAPI apps use **Redis only** today — they do not call AWS. The AWS stac
 | Scope | What | How |
 |-------|------|-----|
 | **A** | Empty ECR repos | Terraform `aws_ecr_repository` (app + lambda) |
-| **B** | Build & push images | `./scripts/ecr-push.sh` |
-| **C** | Lambda runs container from ECR | Terraform `package_type=Image` after push |
+| **B** | Build & push images | `./scripts/ecr-push.sh` (tags `latest` + git SHA) |
+| **C** | Lambda runs container from ECR | `./scripts/ecr-deploy-lambda.sh [tag]` |
 | **D** | Minikube runs FastAPI from ECR | `./scripts/ecr-minikube-sync.sh` or `USE_ECR=1 ./scripts/start-flux.sh` |
 | **E** | CI push to ECR | GitHub Actions + `PUSH_TO_ECR=true` + OIDC role |
+
+**Local testing against real AWS** (from your laptop, not moto):
+
+```bash
+unset AWS_ENDPOINT_URL
+./scripts/ecr-explore.sh          # inspect ECR repos, images, Lambda image URI
+./scripts/ecr-test.sh             # ECR + Lambda container + live CRUD + pytest
+./scripts/ecr-test.sh --push      # rebuild/push first, then verify
+./scripts/ecr-deploy-lambda.sh    # push handler + terraform apply + smoke test
+./scripts/tf-aws.sh test          # full stack integration test
+```
 
 ```bash
 unset AWS_ENDPOINT_URL
 ./scripts/ecr-push.sh                 # B: push FastAPI + Lambda images
-# then terraform apply (C uses the Lambda image)
+./scripts/ecr-deploy-lambda.sh        # C: deploy Lambda from ECR (not zip)
 ./scripts/ecr-minikube-sync.sh        # D: load app image into Minikube
 ```
 
